@@ -1,0 +1,20 @@
+:root {
+  --color-bg: rgba(17, 19, 24, 0.78);
+  --color-surface: rgba(255, 255, 255, 0.06);
+  --color-surface-strong: rgba(255, 255, 255, 0.1);
+  --color-border: rgba(255, 255, 255, 0.13);
+  --color-text: rgba(248, 250, 252, 0.94);
+  --color-muted: rgba(203, 213, 225, 0.68);
+  --color-faint: rgba(148, 163, 184, 0.52);
+  --color-accent: #84cc16;
+  --color-danger: #f87171;
+  --shadow-window: 0 22px 60px rgba(0, 0, 0, 0.42);
+  --radius-window: 20px;
+  --radius-card: 8px;
+  --radius-control: 10px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+}

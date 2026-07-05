@@ -1,0 +1,292 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: transparent;
+  color: var(--color-text);
+  font-family:
+    Inter,
+    "Segoe UI",
+    "Microsoft YaHei",
+    system-ui,
+    sans-serif;
+  letter-spacing: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-shell {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-window);
+  background: var(--color-bg);
+  box-shadow: var(--shadow-window);
+  backdrop-filter: blur(22px) saturate(130%);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  user-select: none;
+}
+
+.header h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.header p {
+  margin: var(--space-1) 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.progress-pill {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.window-layer-control {
+  height: 24px;
+  min-width: 42px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.window-layer-control:hover,
+.window-layer-control:focus {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.window-controls button {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-muted);
+  line-height: 1;
+}
+
+.window-controls button:hover {
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.quick-add {
+  padding: 0 var(--space-5) var(--space-4);
+}
+
+.quick-add input,
+.inline-edit-input,
+.subtask-create-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  outline: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text);
+}
+
+.quick-add input {
+  height: 40px;
+  padding: 0 var(--space-3);
+}
+
+.quick-add input::placeholder,
+.subtask-create-input::placeholder {
+  color: var(--color-faint);
+}
+
+.quick-add input:focus,
+.inline-edit-input:focus,
+.subtask-create-input:focus {
+  border-color: rgba(132, 204, 22, 0.52);
+  box-shadow: 0 0 0 3px rgba(132, 204, 22, 0.12);
+}
+
+.task-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+.task-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.task-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.task-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.task-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 42px;
+  padding: 0 var(--space-2);
+}
+
+.task-row.child {
+  min-height: 36px;
+  padding-left: var(--space-4);
+}
+
+.task-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent);
+}
+
+.task-title {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-title.done {
+  color: var(--color-faint);
+  text-decoration: line-through;
+}
+
+.inline-edit-input {
+  height: 30px;
+  padding: 0 var(--space-2);
+}
+
+.task-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.icon-button {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-muted);
+  line-height: 1;
+}
+
+.icon-button:hover {
+  border-color: var(--color-border);
+  background: var(--color-surface-strong);
+  color: var(--color-text);
+}
+
+.icon-button.danger:hover {
+  color: var(--color-danger);
+}
+
+.subtask-progress {
+  color: var(--color-faint);
+  font-size: 12px;
+}
+
+.subtask-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0 var(--space-2) var(--space-2) 32px;
+}
+
+.subtask-create-input {
+  height: 34px;
+  padding: 0 var(--space-2);
+}
+
+.empty-state,
+.loading-state {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.empty-state p {
+  max-width: 240px;
+  margin: 0;
+  line-height: 1.6;
+}
