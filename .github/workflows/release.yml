@@ -53,3 +53,15 @@ jobs:
             This build is currently unsigned and may trigger a Microsoft Defender SmartScreen warning.
           releaseDraft: true
           prerelease: false
+          args: --bundles nsis
+
+      - name: Upload SHA256 checksum
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $installer = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content SHA256SUMS.txt -Encoding ascii
+          gh release upload "v$version" SHA256SUMS.txt --clobber
