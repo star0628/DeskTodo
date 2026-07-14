@@ -1,6 +1,6 @@
 # DeskTodo Engineering Rules
 
-- Do not add cloud sync, login, AI, Pomodoro, time tracking, projects, tags, natural language scheduling, notifications, startup launch, drag sorting, auto edge hide, analytics, or complex themes unless explicitly requested.
+- Do not add cloud sync, login, AI, Pomodoro, time tracking, projects, tags, natural language scheduling, notifications, drag sorting, auto edge hide, analytics, arbitrary custom themes, or a large settings page unless explicitly requested.
 - Todo state changes must go through `src/domain/todoReducer.ts`.
 - React components must not directly mutate `tasks` or nested `children` arrays.
 - Persistence must go through the repository layer in `src/persistence`.
@@ -8,12 +8,33 @@
 - Keep app state schema validation centralized in `src/persistence/appStateSchema.ts`.
 - Hydration must not trigger persistence writes by itself.
 - Invalid or unreadable persisted data must not be overwritten until a real user Todo mutation occurs.
+- Completed tasks must be hidden through daily selectors, never automatically deleted from persisted state.
+- Daily history is keyed by the stored local completion date; do not derive it by slicing a UTC ISO timestamp.
+- Date navigation is ephemeral UI state and must not be persisted or trigger saves.
+- Calendar completion markers and completed-section grouping must remain selector-derived.
+- Important-task ordering must remain selector-derived; do not reorder or mutate persisted task arrays to pin important work.
+- Search must remain local and read-only over AppState. Do not add a remote index, analytics, or persistence writes for queries.
+- Recurrence must keep at most one unfinished occurrence per series and generate only the latest due occurrence after missed days.
+- Recurrence templates may copy only the parent title, importance flag, and one-level child titles; never introduce nested subtasks.
+- Automatic recurrence materialization must not save over an invalid/error fallback state.
+- Delete undo must restore through reducer actions and the normal persistence queue.
+- Keep historical date views read-only unless a later product requirement explicitly changes that contract.
+- Schema migrations must preserve a rollback copy of the prior valid state before the first upgraded save.
 - Real Todo mutations should be saved promptly; avoid debounce unless every hide, close, and quit path can flush reliably.
 - Tray Quit must route through the frontend flush path before calling the Rust quit command, with a Rust fallback so the user can still exit.
 - Window layer mode must stay minimal: top, normal, and best-effort bottom only.
+- Visual settings must use the fixed theme catalog and reducer actions; components must not write theme or font preferences directly to persistence.
+- Keep font size within 12–20px and verify the 300x280 minimum window at both endpoints.
+- Keep background opacity within 10–100%. Slider preview may be transient, but committed changes must use reducer and repository paths.
+- Treat the operating system as the source of truth for startup launch. Do not duplicate autostart state in `AppState` or edit the Windows registry directly.
+- Browser fallback must keep native-only settings visibly unavailable and must not report a successful desktop operation.
 - Rust window show/recovery paths must not silently change the persisted window layer mode; UI, Store, and native z-order should stay consistent.
 - Do not implement WorkerW, Progman, SetParent desktop embedding, or auto edge hiding.
 - Prefer stability and data safety over feature count.
 - New reducer behavior must include Vitest coverage.
 - Keep the UI in a compact desktop widget style.
+- Keep app-owned typography on the centralized `DeskTodo UI` policy: Arial for Latin and SimHei for Chinese. User-authored missing glyphs and emoji may use the Windows fallback.
+- Use SVG icons rather than icon-font or decorative Unicode glyph controls.
+- Preserve keyboard focus when tasks move between active/completed groups or return through undo.
+- Keep motion brief, limited to opacity/transform/color feedback, and honor `prefers-reduced-motion`.
 - Avoid complex dependencies and UI component libraries.

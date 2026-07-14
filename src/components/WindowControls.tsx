@@ -1,15 +1,16 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { saveWindowState, StateFlags } from "@tauri-apps/plugin-window-state";
+import { Minus, X } from "lucide-react";
 import { isTauriRuntime } from "../persistence";
 
 export function WindowControls() {
   return (
-    <div className="window-controls" aria-label="窗口控制">
+    <div className="window-controls" role="group" aria-label="窗口控制">
       <button type="button" onClick={hideWindow} aria-label="隐藏窗口">
-        —
+        <Minus aria-hidden="true" />
       </button>
       <button type="button" onClick={hideWindow} aria-label="关闭到托盘">
-        ×
+        <X aria-hidden="true" />
       </button>
     </div>
   );

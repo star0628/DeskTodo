@@ -1,5 +1,17 @@
 node_modules/
 dist/
 src-tauri/target/
+.vite/
+coverage/
+output/
+*.exe
+*.pdb
+*.zip
+*.rar
 *.log
+.env
+.env.*
+!.env.example
 .DS_Store
+playwright-report/
+test-results/

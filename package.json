@@ -1,28 +1,61 @@
 {
   "name": "desktop-todo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "description": "A minimal local-first Todo desktop widget for Windows, built with Tauri 2 and React.",
+  "license": "MIT",
+  "author": "star0628",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/star0628/DeskTodo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/star0628/DeskTodo/issues"
+  },
+  "homepage": "https://github.com/star0628/DeskTodo#readme",
+  "keywords": [
+    "tauri",
+    "react",
+    "typescript",
+    "windows",
+    "todo",
+    "desktop-widget"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
+    "dev:visual": "vite --host 127.0.0.1 --port 1421 --strictPort",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:ui": "playwright test",
+    "test:ui:update": "playwright test --update-snapshots",
+    "test:ui:report": "playwright show-report",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri"
   },
   "dependencies": {
+    "@daypicker/react": "10.0.1",
     "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-store": "^2.4.3",
     "@tauri-apps/plugin-window-state": "^2.4.1",
+    "lucide-react": "1.24.0",
     "react": "^18.3.1",
+    "react-colorful": "^5.8.0",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tauri-apps/cli": "^2.0.0",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.0",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "24.13.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.3",
+    "jsdom": "26.1.0",
     "typescript": "^5.6.3",
     "vite": "^8.1.3",
     "vitest": "^4.1.9"

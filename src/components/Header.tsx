@@ -1,38 +1,59 @@
 import type { MouseEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { WindowLayerMode } from "../domain/todoTypes";
+import { TodoAction } from "../domain/todoReducer";
+import { AppSettings, CustomThemeColors, WindowLayerMode } from "../domain/todoTypes";
 import { isTauriRuntime } from "../persistence";
-import { formatTodayLabel } from "../utils/date";
 import { WindowControls } from "./WindowControls";
 import { WindowLayerControl } from "./WindowLayerControl";
+import { SettingsDialog } from "./SettingsDialog";
 
 interface HeaderProps {
-  doneCount: number;
-  totalCount: number;
+  progressLabel: string;
+  progressRatio: number;
   windowLayerMode: WindowLayerMode;
   onWindowLayerModeChange: (mode: WindowLayerMode) => void;
+  settings: AppSettings;
+  dispatch: (action: TodoAction) => void;
+  onBackgroundOpacityPreview?: (percent: number | null) => void;
+  onCustomThemePreview?: (colors: CustomThemeColors | null) => void;
 }
 
 export function Header({
-  doneCount,
-  totalCount,
+  progressLabel,
+  progressRatio,
   windowLayerMode,
-  onWindowLayerModeChange
+  onWindowLayerModeChange,
+  settings,
+  dispatch,
+  onBackgroundOpacityPreview,
+  onCustomThemePreview
 }: HeaderProps) {
   return (
-    <header
-      className="header"
-      onMouseDown={startHeaderDrag}
-    >
-      <div className="header-title-area" onMouseDown={startHeaderDrag}>
-        <h1 onMouseDown={startHeaderDrag}>Day Todo</h1>
-        <p onMouseDown={startHeaderDrag}>{formatTodayLabel()}</p>
-      </div>
-      <div className="header-actions">
-        <span className="progress-pill" aria-label="完成进度">
-          {doneCount} / {totalCount} done
+    <header className="header" onMouseDown={startHeaderDrag}>
+      <div className="header-title-area">
+        <h1>Day Todo</h1>
+        <span className="progress-summary">
+          <span className="progress-pill" aria-label={`完成进度 ${progressLabel}`}>
+            {progressLabel}
+          </span>
+          <span className="progress-track" aria-hidden="true">
+            <span style={{ width: `${Math.max(0, Math.min(1, progressRatio)) * 100}%` }} />
+          </span>
         </span>
+      </div>
+      <div
+        className="header-actions"
+        role="group"
+        aria-label="应用与窗口控制"
+        data-window-drag-exclude
+      >
         <WindowLayerControl mode={windowLayerMode} onChange={onWindowLayerModeChange} />
+        <SettingsDialog
+          settings={settings}
+          dispatch={dispatch}
+          onBackgroundOpacityPreview={onBackgroundOpacityPreview}
+          onCustomThemePreview={onCustomThemePreview}
+        />
         <WindowControls />
       </div>
     </header>
@@ -49,7 +70,11 @@ function startHeaderDrag(event: MouseEvent<HTMLElement>) {
     return;
   }
 
-  if (target.closest("button, input, textarea, select, a")) {
+  if (
+    target.closest(
+      "button, input, textarea, select, a, label, dialog, [data-window-drag-exclude]"
+    )
+  ) {
     return;
   }
 

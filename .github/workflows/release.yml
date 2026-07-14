@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    name: Build Windows release
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run release checks
+        run: |
+          npm run typecheck
+          npm test
+          npm audit --audit-level=high
+
+      - name: Build draft GitHub release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: DeskTodo v__VERSION__
+          releaseBody: |
+            Windows-first DeskTodo release.
+
+            This build is currently unsigned and may trigger a Microsoft Defender SmartScreen warning.
+          releaseDraft: true
+          prerelease: false

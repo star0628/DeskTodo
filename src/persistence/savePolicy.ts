@@ -21,7 +21,11 @@ export function shouldSaveTodoMutation({
   if (nextState === previousState) return false;
   if (action.type === "hydrateState") return false;
 
-  if (loadStatus === "ok" || loadStatus === "missing") {
+  if (action.type === "materializeRecurrences") {
+    return loadStatus === "ok" || loadStatus === "migrated";
+  }
+
+  if (loadStatus === "ok" || loadStatus === "missing" || loadStatus === "migrated") {
     return true;
   }
 
@@ -38,6 +42,11 @@ function isTodoContentMutation(action: TodoAction): boolean {
     case "editSubtask":
     case "toggleSubtask":
     case "deleteSubtask":
+    case "restoreTask":
+    case "restoreSubtask":
+    case "setTaskImportant":
+    case "setTaskRecurrence":
+    case "setTaskSchedule":
       return true;
     default:
       return false;

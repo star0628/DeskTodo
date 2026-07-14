@@ -55,6 +55,13 @@ describe("tauriTaskStore", () => {
           done: false,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: null,
+          completedOn: null,
+      important: false,
+          scheduledFor: null,
+          deadlineAt: null,
+          deadlineDisplayMode: "countdown",
+          recurrenceSeriesId: null,
           children: []
         }
       ]
@@ -82,5 +89,135 @@ describe("tauriTaskStore", () => {
     await expect(store.save(fallbackDefaultState())).rejects.toThrow("save failed");
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it("keeps a v1 backup before saving a migrated state", async () => {
+    const values = new Map<string, unknown>([
+      [
+        "app-state",
+        {
+          schemaVersion: 1,
+          tasks: [],
+          settings: {
+            alwaysOnTop: true,
+            compactMode: false,
+            theme: "dark",
+            windowLayerMode: "alwaysOnTop"
+          }
+        }
+      ]
+    ]);
+    const mockStore: TauriStoreLike = {
+      async get<T>(key: string) {
+        return values.get(key) as T | undefined;
+      },
+      async set(key: string, value: unknown) {
+        values.set(key, value);
+      },
+      async save() {
+        return undefined;
+      }
+    };
+    const store = createTauriTaskStore(async () => mockStore);
+    const loaded = await store.load();
+
+    expect(loaded.status).toBe("migrated");
+    await store.save(loaded.state);
+
+    expect(values.get("app-state-v1-backup")).toMatchObject({ schemaVersion: 1 });
+    expect(values.get("app-state")).toMatchObject({ schemaVersion: 7 });
+  });
+
+  it("keeps a v2 backup before saving visual settings in schema v7", async () => {
+    const v2 = {
+      schemaVersion: 2,
+      tasks: [],
+      settings: {
+        alwaysOnTop: true,
+        compactMode: false,
+        theme: "dark",
+        windowLayerMode: "alwaysOnTop"
+      }
+    };
+    const values = new Map<string, unknown>([["app-state", v2]]);
+    const mockStore: TauriStoreLike = {
+      async get<T>(key: string) {
+        return values.get(key) as T | undefined;
+      },
+      async set(key: string, value: unknown) {
+        values.set(key, value);
+      },
+      async save() {
+        return undefined;
+      }
+    };
+    const store = createTauriTaskStore(async () => mockStore);
+    const loaded = await store.load();
+
+    expect(loaded.status).toBe("migrated");
+    await store.save(loaded.state);
+
+    expect(values.get("app-state-v2-backup")).toBe(v2);
+    expect(values.get("app-state")).toMatchObject({ schemaVersion: 7 });
+  });
+
+  it("keeps a v5 backup before saving migrated custom-theme settings", async () => {
+    const current = fallbackDefaultState();
+    const settings = { ...current.settings } as Record<string, unknown>;
+    delete settings.customThemeColors;
+    const v5 = {
+      schemaVersion: 5,
+      tasks: [],
+      recurrenceSeries: [],
+      settings
+    };
+    const values = new Map<string, unknown>([["app-state", v5]]);
+    const mockStore: TauriStoreLike = {
+      async get<T>(key: string) {
+        return values.get(key) as T | undefined;
+      },
+      async set(key: string, value: unknown) {
+        values.set(key, value);
+      },
+      async save() {
+        return undefined;
+      }
+    };
+    const store = createTauriTaskStore(async () => mockStore);
+    const loaded = await store.load();
+
+    expect(loaded.status).toBe("migrated");
+    await store.save(loaded.state);
+
+    expect(values.get("app-state-v5-backup")).toBe(v5);
+    expect(values.get("app-state")).toMatchObject({ schemaVersion: 7 });
+  });
+
+  it("keeps a v6 backup before saving the migrated deadline display mode", async () => {
+    const current = fallbackDefaultState();
+    const v6 = {
+      ...current,
+      schemaVersion: 6
+    };
+    const values = new Map<string, unknown>([["app-state", v6]]);
+    const mockStore: TauriStoreLike = {
+      async get<T>(key: string) {
+        return values.get(key) as T | undefined;
+      },
+      async set(key: string, value: unknown) {
+        values.set(key, value);
+      },
+      async save() {
+        return undefined;
+      }
+    };
+    const store = createTauriTaskStore(async () => mockStore);
+    const loaded = await store.load();
+
+    expect(loaded.status).toBe("migrated");
+    await store.save(loaded.state);
+
+    expect(values.get("app-state-v6-backup")).toBe(v6);
+    expect(values.get("app-state")).toMatchObject({ schemaVersion: 7 });
   });
 });

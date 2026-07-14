@@ -1,13 +1,21 @@
-import { KeyboardEvent, useState } from "react";
+import { forwardRef, KeyboardEvent, useRef, useState } from "react";
 
 interface QuickAddInputProps {
   onAdd: (title: string) => void;
 }
 
-export function QuickAddInput({ onAdd }: QuickAddInputProps) {
+export const QuickAddInput = forwardRef<HTMLInputElement, QuickAddInputProps>(function QuickAddInput(
+  { onAdd },
+  ref
+) {
   const [value, setValue] = useState("");
+  const isComposingRef = useRef(false);
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.nativeEvent.isComposing || isComposingRef.current || event.keyCode === 229) {
+      return;
+    }
+
     if (event.key !== "Enter") return;
 
     const title = value.trim();
@@ -20,12 +28,19 @@ export function QuickAddInput({ onAdd }: QuickAddInputProps) {
   return (
     <div className="quick-add">
       <input
+        ref={ref}
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={handleKeyDown}
+        onCompositionStart={() => {
+          isComposingRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          isComposingRef.current = false;
+        }}
         placeholder="在此添加任务，Enter 创建"
         aria-label="添加任务"
       />
     </div>
   );
-}
+});

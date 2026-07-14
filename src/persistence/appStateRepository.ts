@@ -1,6 +1,6 @@
 import { AppState } from "../domain/todoTypes";
 
-export type LoadStatus = "ok" | "missing" | "invalid" | "error";
+export type LoadStatus = "ok" | "missing" | "migrated" | "invalid" | "error";
 
 export interface LoadAppStateResult {
   state: AppState;

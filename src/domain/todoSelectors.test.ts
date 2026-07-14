@@ -15,19 +15,36 @@ function task(id: string, done: boolean, children: TodoItem[] = []): TodoItem {
     done,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
+    completedAt: done ? "2026-01-01T00:00:00.000Z" : null,
+    completedOn: done ? "2026-01-01" : null,
+    important: false,
+    scheduledFor: null,
+    deadlineAt: null,
+    deadlineDisplayMode: "countdown",
+    recurrenceSeriesId: null,
     children
   };
 }
 
 function state(tasks: TodoItem[]): AppState {
   return {
-    schemaVersion: 1,
+    schemaVersion: 7,
     tasks,
+    recurrenceSeries: [],
     settings: {
       alwaysOnTop: true,
       compactMode: false,
       theme: "dark",
-      windowLayerMode: "alwaysOnTop"
+      windowLayerMode: "alwaysOnTop",
+      colorTheme: "graphite-lime",
+      customThemeColors: {
+        canvas: "#111318",
+        surface: "#2B303A",
+        accent: "#84CC16"
+      },
+      fontSize: 16,
+      backgroundOpacityPercent: 90,
+      collapseCompletedByDefault: false
     }
   };
 }
