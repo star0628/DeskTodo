@@ -9,6 +9,7 @@ const V3_BACKUP_KEY = "desktodo:app-state-v3-backup";
 const V4_BACKUP_KEY = "desktodo:app-state-v4-backup";
 const V5_BACKUP_KEY = "desktodo:app-state-v5-backup";
 const V6_BACKUP_KEY = "desktodo:app-state-v6-backup";
+const V7_BACKUP_KEY = "desktodo:app-state-v7-backup";
 
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
@@ -40,6 +41,7 @@ export function createLocalTaskStore(storage = getBrowserStorage()): AppStateRep
 function getBackupKey(rawState: string): string {
   try {
     const value = JSON.parse(rawState) as { schemaVersion?: unknown };
+    if (value.schemaVersion === 7) return V7_BACKUP_KEY;
     if (value.schemaVersion === 6) return V6_BACKUP_KEY;
     if (value.schemaVersion === 5) return V5_BACKUP_KEY;
     if (value.schemaVersion === 4) return V4_BACKUP_KEY;

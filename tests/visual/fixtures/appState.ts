@@ -76,8 +76,9 @@ const standardTasks: TodoItem[] = [
 ];
 
 const standardState: AppState = {
-  schemaVersion: 7,
+  schemaVersion: 8,
   tasks: standardTasks,
+  archivedCompletions: [],
   recurrenceSeries: [
     {
       id: "series-weekdays",
@@ -101,14 +102,15 @@ const standardState: AppState = {
 
 const fixtureStates: Record<VisualFixtureName, AppState> = {
   empty: {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: [],
+    archivedCompletions: [],
     recurrenceSeries: [],
     settings: defaultSettings
   },
   standard: standardState,
   stress: {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: Array.from({ length: 24 }, (_, index) => {
       const number = index + 1;
       const done = index >= 18;
@@ -121,6 +123,7 @@ const fixtureStates: Record<VisualFixtureName, AppState> = {
         completedOn: done ? VISUAL_TODAY : null
       });
     }),
+    archivedCompletions: [],
     recurrenceSeries: [],
     settings: defaultSettings
   },

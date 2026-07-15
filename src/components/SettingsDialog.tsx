@@ -2,6 +2,7 @@ import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Settings } from "lucide-react";
 import { TodoAction } from "../domain/todoReducer";
 import {
+  AppState,
   AppSettings,
   CustomThemeColors,
   MAX_BACKGROUND_OPACITY,
@@ -13,8 +14,10 @@ import { AutostartService, autostartService } from "../platform/autostart";
 import { THEME_OPTIONS } from "../settings/themeCatalog";
 import { DialogHeader } from "./DialogHeader";
 import { CustomThemeEditor } from "./CustomThemeEditor";
+import { DataTransferSection } from "./DataTransferSection";
 
 interface SettingsDialogProps {
+  appState?: AppState;
   settings: AppSettings;
   dispatch: (action: TodoAction) => void;
   autostart?: AutostartService;
@@ -23,6 +26,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({
+  appState,
   settings,
   dispatch,
   autostart = autostartService,
@@ -346,6 +350,8 @@ export function SettingsDialog({
               />
               {autostartError && <p className="settings-error" role="status">{autostartError}</p>}
             </section>
+
+            {appState && <DataTransferSection state={appState} dispatch={dispatch} />}
           </div>
         </div>
       </dialog>

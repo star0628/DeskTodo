@@ -45,6 +45,30 @@ export function searchTasks(
     }
   }
 
+  for (const record of state.archivedCompletions) {
+    const normalizedTitle = normalizeSearchText(record.title);
+    const matchIndex = normalizedTitle.indexOf(normalizedQuery);
+    if (matchIndex < 0) {
+      sourceIndex += 1;
+      continue;
+    }
+    results.push({
+      id: record.id,
+      taskId: record.id,
+      parentId: null,
+      parentTitle: record.parentTitle,
+      title: record.title,
+      status: "completed",
+      important: record.important,
+      completedAt: record.completedAt,
+      completedOn: record.completedOn,
+      scheduledFor: record.scheduledFor,
+      recurrenceSeriesId: null,
+      rank: matchIndex === 0 ? 0 : 1,
+      sourceIndex: sourceIndex++
+    });
+  }
+
   return results
     .filter((result) => {
       if (filter === "open") return result.status !== "completed";

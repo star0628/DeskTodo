@@ -11,6 +11,11 @@ import { DateNavigator } from "./components/DateNavigator";
 import { DailyHistoryList } from "./components/DailyHistoryList";
 import { UndoToast } from "./components/UndoToast";
 import { TaskSearchDialog } from "./components/TaskSearchDialog";
+import {
+  createHistoryDeletionPlan,
+  HistoryDeletionPlan,
+  HistoryDeletionSnapshot
+} from "./domain/historyDeletion";
 import { appStateRepository, fallbackDefaultState, isTauriRuntime } from "./persistence";
 import {
   RecurringDeleteBehavior,
@@ -32,6 +37,7 @@ import {
 } from "./domain/todoTypes";
 import { shouldSaveTodoMutation } from "./persistence/savePolicy";
 import { applyWindowLayerMode } from "./persistence/windowLayer";
+import { getRecoveredWindowLayerMode } from "./persistence/windowRecovery";
 import { LoadStatus } from "./persistence/appStateRepository";
 import { useLocalDay } from "./hooks/useLocalDay";
 import { scheduleTodoFocus, scheduleTodoReveal } from "./utils/focus";
@@ -125,7 +131,6 @@ function App() {
     if (!isTauriRuntime()) return;
 
     let unlistenQuit: (() => void) | undefined;
-    let unlistenReapplyLayer: (() => void) | undefined;
 
     void listen("desktodo://request-quit", () => {
       void requestQuitFromFrontend();
@@ -133,20 +138,8 @@ function App() {
       unlistenQuit = handler;
     });
 
-    void listen("desktodo://reapply-window-layer", () => {
-      const mode = window.__DESKTODO_LAST_STATE__?.settings.windowLayerMode;
-      if (!mode) return;
-
-      void applyWindowLayerMode(mode).catch((error) => {
-        console.warn("DeskTodo window layer reapply failed.", error);
-      });
-    }).then((handler) => {
-      unlistenReapplyLayer = handler;
-    });
-
     return () => {
       unlistenQuit?.();
-      unlistenReapplyLayer?.();
     };
   }, []);
 
@@ -180,6 +173,33 @@ function App() {
     },
     [queueSave]
   );
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    let unlistenRecovery: (() => void) | undefined;
+
+    void listen("desktodo://recover-window", () => {
+      const currentMode = window.__DESKTODO_LAST_STATE__?.settings.windowLayerMode;
+      if (!currentMode) return;
+
+      const recoveredMode = getRecoveredWindowLayerMode(currentMode);
+      if (recoveredMode !== currentMode) {
+        dispatchTodoAction({ type: "setWindowLayerMode", mode: recoveredMode });
+        return;
+      }
+
+      void applyWindowLayerMode(recoveredMode).catch((error) => {
+        console.warn("DeskTodo recovered window layer update failed.", error);
+      });
+    }).then((handler) => {
+      unlistenRecovery = handler;
+    });
+
+    return () => {
+      unlistenRecovery?.();
+    };
+  }, [dispatchTodoAction]);
 
   const isToday = selectedDate === today;
 
@@ -273,6 +293,27 @@ function App() {
     [dispatchTodoAction, state.tasks]
   );
 
+  const createHistoryDeletePlan = useCallback(
+    (targets: Parameters<typeof createHistoryDeletionPlan>[1]) =>
+      createHistoryDeletionPlan(state, targets),
+    [state]
+  );
+
+  const deleteHistory = useCallback(
+    (plan: HistoryDeletionPlan) => {
+      const currentPlan = createHistoryDeletionPlan(state, plan.targets);
+      if (!currentPlan) return;
+      setPendingUndo({
+        kind: "history",
+        snapshot: currentPlan.snapshot,
+        count: currentPlan.deletedEntryCount,
+        focusId: currentPlan.focusId
+      });
+      dispatchTodoAction({ type: "deleteHistoryEntries", targets: currentPlan.targets });
+    },
+    [dispatchTodoAction, state]
+  );
+
   const undoDelete = useCallback(() => {
     if (!pendingUndo) return;
     if (pendingUndo.kind === "task") {
@@ -282,15 +323,22 @@ function App() {
         index: pendingUndo.index,
         series: pendingUndo.series
       });
-    } else {
+      scheduleTodoFocus(pendingUndo.task.id);
+    } else if (pendingUndo.kind === "subtask") {
       dispatchTodoAction({
         type: "restoreSubtask",
         parentId: pendingUndo.parentId,
         task: pendingUndo.task,
         index: pendingUndo.index
       });
+      scheduleTodoFocus(pendingUndo.task.id);
+    } else {
+      dispatchTodoAction({
+        type: "restoreHistoryEntries",
+        snapshot: pendingUndo.snapshot
+      });
+      scheduleTodoReveal(pendingUndo.focusId);
     }
-    scheduleTodoFocus(pendingUndo.task.id);
     setPendingUndo(null);
   }, [dispatchTodoAction, pendingUndo]);
 
@@ -324,6 +372,7 @@ function App() {
         windowLayerMode={state.settings.windowLayerMode}
         onWindowLayerModeChange={(mode) => dispatchTodoAction({ type: "setWindowLayerMode", mode })}
         settings={state.settings}
+        appState={state}
         dispatch={dispatchTodoAction}
         onBackgroundOpacityPreview={setBackgroundOpacityPreview}
         onCustomThemePreview={setCustomThemePreview}
@@ -364,13 +413,18 @@ function App() {
             )}
           </>
         ) : (
-          <DailyHistoryList entries={historyEntries} />
+          <DailyHistoryList
+            key={selectedDate}
+            entries={historyEntries}
+            onCreateDeletePlan={createHistoryDeletePlan}
+            onConfirmDelete={deleteHistory}
+          />
         )
       )}
       {pendingUndo && (
         <UndoToast
-          key={`${pendingUndo.kind}-${pendingUndo.task.id}`}
-          message={`已删除“${pendingUndo.task.title}”`}
+          key={getPendingUndoKey(pendingUndo)}
+          message={getPendingUndoMessage(pendingUndo)}
           onUndo={undoDelete}
           onDismiss={dismissUndo}
         />
@@ -392,7 +446,25 @@ function App() {
 
 type PendingUndo =
   | { kind: "task"; task: TodoItem; index: number; series?: RecurrenceSeries }
-  | { kind: "subtask"; parentId: string; task: TodoItem; index: number };
+  | { kind: "subtask"; parentId: string; task: TodoItem; index: number }
+  | {
+      kind: "history";
+      snapshot: HistoryDeletionSnapshot;
+      count: number;
+      focusId: string;
+    };
+
+function getPendingUndoKey(pendingUndo: PendingUndo): string {
+  return pendingUndo.kind === "history"
+    ? `history-${pendingUndo.focusId}-${pendingUndo.count}`
+    : `${pendingUndo.kind}-${pendingUndo.task.id}`;
+}
+
+function getPendingUndoMessage(pendingUndo: PendingUndo): string {
+  return pendingUndo.kind === "history"
+    ? `已删除 ${pendingUndo.count} 条完成记录`
+    : `已删除“${pendingUndo.task.title}”`;
+}
 
 async function requestQuitFromFrontend() {
   if (!isTauriRuntime()) return;

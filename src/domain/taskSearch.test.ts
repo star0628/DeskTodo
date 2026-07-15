@@ -75,6 +75,40 @@ describe("taskSearch", () => {
   it("returns an empty result for blank queries", () => {
     expect(searchTasks(state([task()]), "   ", "2026-07-13")).toEqual([]);
   });
+
+  it("finds imported completion history without exposing it as open work", () => {
+    const appState: AppState = {
+      ...fallbackDefaultState(),
+      archivedCompletions: [
+        {
+          id: "archive-1",
+          sourceRef: "source-1",
+          sourceTaskId: "task-1",
+          importBatchId: "batch-1",
+          kind: "task",
+          title: "归档季度复盘",
+          parentTitle: null,
+          createdAt: "2026-07-12T08:00:00.000Z",
+          completedAt: "2026-07-13T08:00:00.000Z",
+          completedOn: "2026-07-13",
+          important: true,
+          scheduledFor: null,
+          deadlineAt: null,
+          recurrenceLabel: null
+        }
+      ]
+    };
+
+    expect(searchTasks(appState, "季度", "2026-07-14")).toEqual([
+      expect.objectContaining({
+        id: "archive-1",
+        title: "归档季度复盘",
+        status: "completed",
+        completedOn: "2026-07-13"
+      })
+    ]);
+    expect(searchTasks(appState, "季度", "2026-07-14", "open")).toEqual([]);
+  });
 });
 
 function state(tasks: TodoItem[]): AppState {

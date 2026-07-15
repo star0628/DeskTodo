@@ -119,21 +119,19 @@ describe("TaskList", () => {
     });
   });
 
-  it("keeps a fixed parent action structure when there are no subtasks", () => {
+  it("gives no-subtask rows a four-control action rail without an empty progress slot", () => {
     const { container } = renderTaskList(vi.fn());
     const actions = container.querySelector(".task-actions-parent");
-    const progress = actions?.querySelector(".subtask-progress");
 
     expect(actions).not.toBeNull();
-    expect(progress).toBeEmptyDOMElement();
-    expect(progress).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".subtask-progress")).toBeNull();
     expect(actions?.querySelector(".important-button")).not.toBeNull();
     expect(actions?.querySelector(".recurrence-trigger")).not.toBeNull();
     expect(actions?.querySelector(".add-subtask-button")).not.toBeNull();
     expect(actions?.querySelector(".delete-task-button")).not.toBeNull();
   });
 
-  it("shows progress inside the reserved slot when subtasks exist", () => {
+  it("shows progress inside the task copy when subtasks exist", () => {
     const parent = task("parent with progress", false);
     parent.children = [task("done child", true), task("open child", false)];
     const { container } = renderTaskList(vi.fn(), [parent]);
@@ -141,7 +139,9 @@ describe("TaskList", () => {
 
     expect(progress).toHaveTextContent("1 / 2");
     expect(progress).toHaveAccessibleName("子任务完成 1，共 2 项");
-    expect(progress).not.toHaveAttribute("aria-hidden");
+    expect(progress).toBe(container.querySelector(".task-copy .subtask-progress"));
+    expect(progress).toBe(container.querySelector(".task-meta-row .subtask-progress"));
+    expect(container.querySelector(".task-actions-parent .subtask-progress")).toBeNull();
   });
 
   it("does not dispatch when an unchanged title is committed", async () => {

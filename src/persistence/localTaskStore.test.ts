@@ -129,8 +129,9 @@ function v2State() {
 }
 
 describe("appStateSchema", () => {
-  it("fallbackDefaultState uses schema v7 and stable visual defaults", () => {
-    expect(fallbackDefaultState().schemaVersion).toBe(7);
+  it("fallbackDefaultState uses schema v8 and stable visual defaults", () => {
+    expect(fallbackDefaultState().schemaVersion).toBe(8);
+    expect(fallbackDefaultState().archivedCompletions).toEqual([]);
     expect(fallbackDefaultState().settings.windowLayerMode).toBe("alwaysOnTop");
     expect(fallbackDefaultState().settings.alwaysOnTop).toBe(true);
     expect(fallbackDefaultState().settings.colorTheme).toBe("graphite-lime");
@@ -155,8 +156,27 @@ describe("appStateSchema", () => {
   });
 
   it("unknown schema version returns status invalid", () => {
-    const unknown = { ...fallbackDefaultState(), schemaVersion: 8 };
+    const unknown = { ...fallbackDefaultState(), schemaVersion: 9 };
     expect(parseAppState(unknown)).toEqual({ state: fallbackDefaultState(), status: "invalid" });
+  });
+
+  it("migrates schema v7 by adding an empty completion archive", () => {
+    const { archivedCompletions: _archive, ...current } = fallbackDefaultState();
+    const result = parseAppState({ ...current, schemaVersion: 7 });
+
+    expect(result.status).toBe("migrated");
+    expect(result.state.schemaVersion).toBe(8);
+    expect(result.state.archivedCompletions).toEqual([]);
+  });
+
+  it("rejects invalid archived completion records in schema v8", () => {
+    const state = fallbackDefaultState();
+    const result = parseAppState({
+      ...state,
+      archivedCompletions: [{ id: "broken" }]
+    });
+
+    expect(result.status).toBe("invalid");
   });
 
   it("nested child returns status invalid", () => {
@@ -196,14 +216,14 @@ describe("appStateSchema", () => {
     const result = parseAppState(legacy);
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(7);
+    expect(result.state.schemaVersion).toBe(8);
     expect(result.state.tasks[0]).toMatchObject({
       deadlineAt,
       deadlineDisplayMode: "countdown"
     });
   });
 
-  it("rejects an invalid deadline display mode in schema v7", () => {
+  it("rejects an invalid deadline display mode in schema v8", () => {
     const invalid = {
       ...fallbackDefaultState(),
       tasks: [{ ...currentTask(false), deadlineDisplayMode: "clock" }]
@@ -254,7 +274,7 @@ describe("appStateSchema", () => {
     const result = parseAppState(v5State());
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(7);
+    expect(result.state.schemaVersion).toBe(8);
     expect(result.state.settings.customThemeColors).toEqual({
       canvas: "#111318",
       surface: "#2B303A",
@@ -334,7 +354,7 @@ describe("appStateSchema", () => {
     const result = parseAppState(v3State());
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(7);
+    expect(result.state.schemaVersion).toBe(8);
     expect(result.state.tasks[0]).toMatchObject({
       important: false,
       scheduledFor: null,
@@ -353,7 +373,7 @@ describe("appStateSchema", () => {
     const result = parseAppState(v2State());
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(7);
+    expect(result.state.schemaVersion).toBe(8);
     expect(result.state.settings).toMatchObject({
       colorTheme: "graphite-lime",
       fontSize: 16,
@@ -365,7 +385,7 @@ describe("appStateSchema", () => {
     const result = parseAppState(legacyState(true));
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(7);
+    expect(result.state.schemaVersion).toBe(8);
     expect(result.state.tasks[0]).toMatchObject({
       id: "task-1",
       done: true,
@@ -576,7 +596,7 @@ describe("localTaskStore", () => {
     await expect(store.load()).resolves.toEqual({ state: fallbackDefaultState(), status: "invalid" });
   });
 
-  it("saves and loads a v7 app state roundtrip", async () => {
+  it("saves and loads a v8 app state roundtrip", async () => {
     const storage = createMemoryStorage();
     const store = createLocalTaskStore(storage);
     const state: AppState = { ...fallbackDefaultState(), tasks: [currentTask(true)] };
@@ -586,6 +606,19 @@ describe("localTaskStore", () => {
     await expect(store.load()).resolves.toEqual({ state, status: "ok" });
   });
 
+  it("keeps a v7 backup before the first completion-archive migration save", async () => {
+    const { archivedCompletions: _archive, ...current } = fallbackDefaultState();
+    const rawV7 = JSON.stringify({ ...current, schemaVersion: 7 });
+    const storage = createMemoryStorage(rawV7);
+    const store = createLocalTaskStore(storage);
+    const loaded = await store.load();
+
+    expect(loaded.status).toBe("migrated");
+    await store.save(loaded.state);
+
+    expect(storage.getItem("desktodo:app-state-v7-backup")).toBe(rawV7);
+  });
+
   it("migrates v4 deadlines to null and keeps a v4 backup before saving", async () => {
     const rawV4 = JSON.stringify(v4State());
     const storage = createMemoryStorage(rawV4);
@@ -593,7 +626,7 @@ describe("localTaskStore", () => {
     const loaded = await store.load();
 
     expect(loaded.status).toBe("migrated");
-    expect(loaded.state.schemaVersion).toBe(7);
+    expect(loaded.state.schemaVersion).toBe(8);
     expect(loaded.state.tasks[0].deadlineAt).toBeNull();
 
     await store.save(loaded.state);
@@ -636,7 +669,7 @@ describe("localTaskStore", () => {
     await store.save(loaded.state);
 
     expect(storage.getItem("desktodo:app-state-v1-backup")).toBe(rawLegacy);
-    expect(JSON.parse(storage.getItem("desktodo:app-state") ?? "{}").schemaVersion).toBe(7);
+    expect(JSON.parse(storage.getItem("desktodo:app-state") ?? "{}").schemaVersion).toBe(8);
   });
 
   it("keeps a v2 backup before the first migrated state save", async () => {

@@ -25,8 +25,6 @@ describe("DeskTodo design token contract", () => {
       "--size-icon": "16px",
       "--size-task-row": "44px",
       "--size-task-row-compact": "36px",
-      "--size-task-progress-slot": "32px",
-      "--size-task-progress-slot-compact": "28px",
       "--size-task-action-slot": "28px",
       "--size-task-action-slot-compact": "24px",
       "--motion-fast": "100ms",

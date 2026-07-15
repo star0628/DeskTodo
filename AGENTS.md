@@ -18,8 +18,12 @@
 - Recurrence templates may copy only the parent title, importance flag, and one-level child titles; never introduce nested subtasks.
 - Automatic recurrence materialization must not save over an invalid/error fallback state.
 - Delete undo must restore through reducer actions and the normal persistence queue.
-- Keep historical date views read-only unless a later product requirement explicitly changes that contract.
+- Historical date views stay read-only by default; deletion must use the explicit selection, confirmation, reducer, and undo flow.
 - Schema migrations must preserve a rollback copy of the prior valid state before the first upgraded save.
+- Completion-history files must use the versioned parser in `src/transfer`; never parse ad hoc prose or delimiters in a component.
+- Imported completion records are historical snapshots only. They must not recreate unfinished tasks, activate recurrence, or overwrite settings.
+- Validate an entire import before dispatching one reducer action; invalid and partially valid files must leave AppState unchanged.
+- Keep Tauri and browser file handling behind `RecordFileService`; React components must not call plugin-fs directly.
 - Real Todo mutations should be saved promptly; avoid debounce unless every hide, close, and quit path can flush reliably.
 - Tray Quit must route through the frontend flush path before calling the Rust quit command, with a Rust fallback so the user can still exit.
 - Window layer mode must stay minimal: top, normal, and best-effort bottom only.

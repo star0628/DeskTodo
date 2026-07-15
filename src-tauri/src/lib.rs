@@ -9,23 +9,32 @@ use std::{
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, WindowEvent,
 };
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
+#[cfg(windows)]
+use windows::Win32::UI::WindowsAndMessaging::{
+    BringWindowToTop, SetForegroundWindow, SetWindowPos, ShowWindowAsync, HWND_TOPMOST, SWP_NOMOVE,
+    SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE,
+};
+
 static SHOULD_QUIT: AtomicBool = AtomicBool::new(false);
+static RECOVERY_PENDING: AtomicBool = AtomicBool::new(false);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_main_window(app);
+            recover_main_window(app);
         }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(
             tauri_plugin_window_state::Builder::default()
@@ -39,20 +48,40 @@ pub fn run() {
         ])
         .setup(|app| {
             build_tray(app)?;
-            show_main_window(app.handle());
+            show_main_window_on_startup(app.handle());
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
                 if !SHOULD_QUIT.load(Ordering::SeqCst) {
                     api.prevent_close();
                     let _ = window.app_handle().save_window_state(window_state_flags());
                     let _ = window.hide();
                 }
             }
+            WindowEvent::Focused(true) => complete_window_recovery(window.app_handle()),
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running DeskTodo");
+}
+
+fn show_main_window_on_startup(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+fn complete_window_recovery(app: &tauri::AppHandle) {
+    if RECOVERY_PENDING.swap(false, Ordering::SeqCst) {
+        if let Some(window) = app.get_webview_window("main") {
+            if let Err(error) = window.emit("desktodo://recover-window", ()) {
+                eprintln!("DeskTodo window recovery event failed: {error}");
+            }
+        }
+    }
 }
 
 fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
@@ -60,7 +89,7 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
     let hide_item = MenuItem::with_id(app, "hide", "隐藏 DeskTodo", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
-    let icon = Image::from_bytes(include_bytes!("../icons/icon.png"))?;
+    let icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))?;
 
     TrayIconBuilder::new()
         .tooltip("DeskTodo")
@@ -68,9 +97,21 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => show_main_window(app),
+            "show" => recover_main_window(app),
             "hide" => hide_main_window(app),
             "quit" => request_frontend_quit(app),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| match event {
+            TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            }
+            | TrayIconEvent::DoubleClick {
+                button: MouseButton::Left,
+                ..
+            } => recover_main_window(tray.app_handle()),
             _ => {}
         })
         .build(app)?;
@@ -78,14 +119,68 @@ fn build_tray(app: &mut tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn show_main_window(app: &tauri::AppHandle) {
+fn recover_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
+        RECOVERY_PENDING.store(true, Ordering::SeqCst);
+        let _ = window.set_always_on_bottom(false);
+        let _ = window.set_always_on_top(true);
         let _ = window.show();
+        let _ = window.unminimize();
+        force_windows_foreground(&window);
         let _ = window.set_focus();
-        let _ = window.emit("desktodo://reapply-window-layer", ());
+        if matches!(window.is_focused(), Ok(true)) {
+            complete_window_recovery(window.app_handle());
+        }
+
+        let dispatcher = window.clone();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            let retry_window = dispatcher.clone();
+            let _ = dispatcher.run_on_main_thread(move || {
+                let _ = retry_window.set_always_on_bottom(false);
+                let _ = retry_window.set_always_on_top(true);
+                if !matches!(retry_window.is_visible(), Ok(true)) {
+                    let _ = retry_window.show();
+                }
+                if matches!(retry_window.is_minimized(), Ok(true)) {
+                    let _ = retry_window.unminimize();
+                }
+                force_windows_foreground(&retry_window);
+                if !matches!(retry_window.is_focused(), Ok(true)) {
+                    let _ = retry_window.set_focus();
+                }
+                if matches!(retry_window.is_focused(), Ok(true)) {
+                    complete_window_recovery(retry_window.app_handle());
+                }
+            });
+        });
     }
 }
+
+#[cfg(windows)]
+fn force_windows_foreground(window: &tauri::WebviewWindow) {
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+
+    unsafe {
+        let _ = ShowWindowAsync(hwnd, SW_RESTORE);
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
+        );
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+    }
+}
+
+#[cfg(not(windows))]
+fn force_windows_foreground(_window: &tauri::WebviewWindow) {}
 
 fn hide_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -96,8 +191,8 @@ fn hide_main_window(app: &tauri::AppHandle) {
 
 fn request_frontend_quit(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
         let _ = window.show();
+        let _ = window.unminimize();
         let _ = window.set_focus();
 
         if window.emit("desktodo://request-quit", ()).is_ok() {

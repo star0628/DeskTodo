@@ -1,6 +1,7 @@
 import {
   AppSettings,
   AppState,
+  ArchivedCompletionRecord,
   ColorThemeId,
   CustomThemeColors,
   DEFAULT_BACKGROUND_OPACITY,
@@ -53,8 +54,9 @@ interface V3TodoItem extends LegacyTodoItem {
 
 export function fallbackDefaultState(): AppState {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: [],
+    archivedCompletions: [],
     recurrenceSeries: [],
     settings: {
       alwaysOnTop: true,
@@ -91,10 +93,17 @@ export function parseAppState(rawValue: unknown): ParseAppStateResult {
     return { state: fallbackDefaultState(), status: "invalid" };
   }
 
-  if (rawValue.schemaVersion === 7) {
+  if (rawValue.schemaVersion === 8) {
     const state = toAppState(rawValue);
     return state
       ? { state, status: "ok" }
+      : { state: fallbackDefaultState(), status: "invalid" };
+  }
+
+  if (rawValue.schemaVersion === 7) {
+    const state = migrateV7AppState(rawValue);
+    return state
+      ? { state, status: "migrated" }
       : { state: fallbackDefaultState(), status: "invalid" };
   }
 
@@ -152,17 +161,48 @@ export function isTodoItem(value: unknown): value is TodoItem {
 }
 
 function toAppState(value: unknown): AppState | null {
-  if (!isRecord(value) || value.schemaVersion !== 7) return null;
-  if (!Array.isArray(value.tasks) || !Array.isArray(value.recurrenceSeries)) return null;
+  if (!isRecord(value) || value.schemaVersion !== 8) return null;
+  if (
+    !Array.isArray(value.tasks) ||
+    !Array.isArray(value.archivedCompletions) ||
+    !Array.isArray(value.recurrenceSeries)
+  ) {
+    return null;
+  }
 
+  const tasks = value.tasks.map((task) => parseParentTodoItem(task));
+  const archivedCompletions = value.archivedCompletions.map(parseArchivedCompletionRecord);
+  const recurrenceSeries = value.recurrenceSeries.map((series) => parseRecurrenceSeries(series));
+  const settings = toAppSettings(value.settings);
+  if (
+    tasks.some(isNull) ||
+    archivedCompletions.some(isNull) ||
+    recurrenceSeries.some(isNull) ||
+    !settings
+  ) {
+    return null;
+  }
+
+  const state: AppState = {
+    schemaVersion: 8,
+    tasks: tasks as TodoItem[],
+    archivedCompletions: archivedCompletions as ArchivedCompletionRecord[],
+    recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
+    settings
+  };
+  return hasValidStateRelationships(state) ? state : null;
+}
+
+function migrateV7AppState(value: Record<string, unknown>): AppState | null {
+  if (!Array.isArray(value.tasks) || !Array.isArray(value.recurrenceSeries)) return null;
   const tasks = value.tasks.map((task) => parseParentTodoItem(task));
   const recurrenceSeries = value.recurrenceSeries.map((series) => parseRecurrenceSeries(series));
   const settings = toAppSettings(value.settings);
   if (tasks.some(isNull) || recurrenceSeries.some(isNull) || !settings) return null;
-
   const state: AppState = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: tasks as TodoItem[],
+    archivedCompletions: [],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
@@ -178,8 +218,9 @@ function migrateV6AppState(value: Record<string, unknown>): AppState | null {
   const settings = toAppSettings(value.settings);
   if (tasks.some(isNull) || recurrenceSeries.some(isNull) || !settings) return null;
   const state: AppState = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: tasks as TodoItem[],
+    archivedCompletions: [],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
@@ -195,8 +236,9 @@ function migrateV5AppState(value: Record<string, unknown>): AppState | null {
   const settings = migrateV5AppSettings(value.settings);
   if (tasks.some(isNull) || recurrenceSeries.some(isNull) || !settings) return null;
   const state: AppState = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: tasks as TodoItem[],
+    archivedCompletions: [],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
@@ -287,6 +329,50 @@ function parseTodoItem(
   };
 }
 
+function parseArchivedCompletionRecord(value: unknown): ArchivedCompletionRecord | null {
+  if (!isRecord(value)) return null;
+  if (
+    typeof value.id !== "string" ||
+    value.id.length === 0 ||
+    typeof value.sourceRef !== "string" ||
+    value.sourceRef.length === 0 ||
+    typeof value.sourceTaskId !== "string" ||
+    value.sourceTaskId.length === 0 ||
+    typeof value.importBatchId !== "string" ||
+    value.importBatchId.length === 0 ||
+    (value.kind !== "task" && value.kind !== "subtask") ||
+    !isNormalizedTitle(value.title) ||
+    !isIsoTimestampValue(value.createdAt) ||
+    !isIsoTimestampValue(value.completedAt) ||
+    !isLocalDateKey(value.completedOn) ||
+    typeof value.important !== "boolean"
+  ) {
+    return null;
+  }
+  if (value.kind === "task" && value.parentTitle !== null) return null;
+  if (value.kind === "subtask" && !isNormalizedTitle(value.parentTitle)) return null;
+  if (value.scheduledFor !== null && !isLocalDateKey(value.scheduledFor)) return null;
+  if (value.deadlineAt !== null && !isIsoTimestampValue(value.deadlineAt)) return null;
+  if (value.recurrenceLabel !== null && !isNormalizedTitle(value.recurrenceLabel)) return null;
+
+  return {
+    id: value.id,
+    sourceRef: value.sourceRef,
+    sourceTaskId: value.sourceTaskId,
+    importBatchId: value.importBatchId,
+    kind: value.kind,
+    title: value.title,
+    parentTitle: value.parentTitle as string | null,
+    createdAt: value.createdAt,
+    completedAt: value.completedAt,
+    completedOn: value.completedOn,
+    important: value.important,
+    scheduledFor: value.scheduledFor as string | null,
+    deadlineAt: value.deadlineAt as string | null,
+    recurrenceLabel: value.recurrenceLabel as string | null
+  };
+}
+
 function parseRecurrenceSeries(
   value: unknown,
   allowV4 = false,
@@ -372,6 +458,20 @@ function hasValidStateRelationships(state: AppState): boolean {
     }
   }
 
+  const archiveIds = new Set<string>();
+  const archiveSourceRefs = new Set<string>();
+  for (const record of state.archivedCompletions) {
+    if (
+      archiveIds.has(record.id) ||
+      archiveSourceRefs.has(record.sourceRef) ||
+      taskIds.has(record.id)
+    ) {
+      return false;
+    }
+    archiveIds.add(record.id);
+    archiveSourceRefs.add(record.sourceRef);
+  }
+
   const seriesIds = new Set<string>();
   for (const series of state.recurrenceSeries) {
     if (seriesIds.has(series.id)) return false;
@@ -407,8 +507,9 @@ function migrateV4AppState(value: Record<string, unknown>): AppState | null {
   const settings = migrateV5AppSettings(value.settings);
   if (tasks.some(isNull) || recurrenceSeries.some(isNull) || !settings) return null;
   const state: AppState = {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: tasks as TodoItem[],
+    archivedCompletions: [],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
@@ -420,8 +521,9 @@ function migrateV3AppState(value: Record<string, unknown>): AppState | null {
   const settings = migrateV3AppSettings(value.settings);
   if (!settings) return null;
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: value.tasks.map(migrateV3TodoItem),
+    archivedCompletions: [],
     recurrenceSeries: [],
     settings
   };
@@ -432,8 +534,9 @@ function migrateV2AppState(value: Record<string, unknown>): AppState | null {
   const settings = migrateLegacyAppSettings(value.settings);
   if (!settings) return null;
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: value.tasks.map(migrateV3TodoItem),
+    archivedCompletions: [],
     recurrenceSeries: [],
     settings
   };
@@ -446,8 +549,9 @@ function migrateLegacyAppState(value: Record<string, unknown>): AppState | null 
   const tasks = value.tasks.map(migrateLegacyTodoItem);
   if (tasks.some(isNull)) return null;
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks: tasks as TodoItem[],
+    archivedCompletions: [],
     recurrenceSeries: [],
     settings
   };
@@ -690,6 +794,10 @@ function isWeekday(value: unknown): value is Weekday {
 
 function isIsoTimestamp(value: string): boolean {
   return !Number.isNaN(new Date(value).getTime());
+}
+
+function isIsoTimestampValue(value: unknown): value is string {
+  return typeof value === "string" && isIsoTimestamp(value);
 }
 
 function isNull<T>(value: T | null): value is null {

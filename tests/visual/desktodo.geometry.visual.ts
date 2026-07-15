@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { createVisualState } from "./fixtures/appState";
 import { openVisualApp, settleVisualState, taskCard } from "./visualHarness";
 
@@ -23,6 +23,14 @@ const metrics: Record<string, unknown> = {
     minimumTargetSizePx: 24
   }
 };
+
+const customPickerFields = ["窗口底色", "内容表面", "强调颜色"] as const;
+const customPickerViewports = [
+  { width: 300, height: 280 },
+  { width: 340, height: 400 },
+  { width: 360, height: 520 }
+] as const;
+const customPickerFontSizes = [12, 16, 20] as const;
 
 test.describe.configure({ mode: "serial" });
 
@@ -55,6 +63,105 @@ test("minimum viewport has no horizontal overflow", async ({ page }) => {
 
   expect(result.documentScrollWidth).toBeLessThanOrEqual(result.documentClientWidth);
   expect(result.shellScrollWidth).toBeLessThanOrEqual(result.shellClientWidth);
+});
+
+for (const viewport of customPickerViewports) {
+  for (const fontSize of customPickerFontSizes) {
+    test(`keeps every custom color picker horizontally stable at ${viewport.width}px and ${fontSize}px type`, async ({ page }) => {
+      await openVisualApp(
+        page,
+        createVisualState("standard", { colorTheme: "custom", fontSize }),
+        { viewport }
+      );
+      await page.getByRole("button", { name: "打开设置" }).click();
+
+      const measurements: Record<string, unknown> = {};
+      for (const field of customPickerFields) {
+        await page.getByRole("button", { name: `编辑${field}颜色编码` }).click();
+        const picker = page.getByRole("region", { name: `编辑${field}` });
+        await expect(picker).toBeVisible();
+        await picker.evaluate((element) =>
+          element.scrollIntoView({ behavior: "instant", block: "nearest", inline: "nearest" })
+        );
+        await settleVisualState(page);
+
+        const input = picker.getByRole("textbox", { name: `${field}颜色编码` });
+        await input.focus();
+        await page.keyboard.press("Tab");
+        await page.keyboard.press("Shift+Tab");
+        await settleVisualState(page);
+
+        const geometry = await page.evaluate((pickerLabel) => {
+          const content = document.querySelector<HTMLElement>(".settings-content");
+          const region = document.querySelector<HTMLElement>(
+            `[aria-label="编辑${pickerLabel}"][role="region"]`
+          );
+          if (!content || !region) return null;
+          const contentBounds = content.getBoundingClientRect();
+          const pickerBounds = region.getBoundingClientRect();
+          return {
+            clientWidth: content.clientWidth,
+            scrollWidth: content.scrollWidth,
+            scrollLeft: content.scrollLeft,
+            pickerLeft: pickerBounds.left,
+            pickerRight: pickerBounds.right,
+            contentLeft: contentBounds.left,
+            contentRight: contentBounds.right,
+            leftOverflow: Math.max(0, contentBounds.left - pickerBounds.left),
+            rightOverflow: Math.max(0, pickerBounds.right - contentBounds.right)
+          };
+        }, field);
+        measurements[field] = geometry;
+
+        expect(geometry).not.toBeNull();
+        expect(geometry?.scrollWidth).toBe(geometry?.clientWidth);
+        expect(geometry?.scrollLeft).toBe(0);
+        expect(geometry?.leftOverflow).toBe(0);
+        expect(geometry?.rightOverflow).toBe(0);
+
+        await picker.getByRole("button", { name: "取消" }).click();
+        await expect(picker).toHaveCount(0);
+      }
+      metrics[`customPicker-${viewport.width}-${fontSize}`] = measurements;
+    });
+  }
+}
+
+test("completion record transfer fits the widget settings viewport", async ({ page }) => {
+  await openVisualApp(page, createVisualState("standard"), {
+    viewport: { width: 360, height: 520 }
+  });
+
+  await page.getByRole("button", { name: "打开设置" }).click();
+  await page.getByRole("button", { name: "导出完成记录" }).click();
+  await settleVisualState(page);
+
+  const result = await page.evaluate(() => {
+    const content = document.querySelector<HTMLElement>(".settings-content");
+    const panel = document.querySelector<HTMLElement>(".data-transfer-panel");
+    return {
+      documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      contentOverflow: content ? content.scrollWidth > content.clientWidth : true,
+      contentWidths: content
+        ? { client: content.clientWidth, scroll: content.scrollWidth }
+        : null,
+      panelOverflow: panel ? panel.scrollWidth > panel.clientWidth : true,
+      panelWidths: panel ? { client: panel.clientWidth, scroll: panel.scrollWidth } : null,
+      panelVisible: Boolean(panel),
+      saveButtonVisible: Boolean(
+        Array.from(document.querySelectorAll("button")).find((button) =>
+          button.textContent?.includes("保存 TXT")
+        )
+      )
+    };
+  });
+  metrics.completionRecordTransfer = result;
+
+  expect(result.documentOverflow).toBe(false);
+  expect(result.contentOverflow).toBe(false);
+  expect(result.panelOverflow).toBe(false);
+  expect(result.panelVisible).toBe(true);
+  expect(result.saveButtonVisible).toBe(true);
 });
 
 test("keeps the common right edge aligned", async ({ page }) => {
@@ -186,7 +293,6 @@ test("keeps parent-task action columns aligned", async ({ page }) => {
   const result = await page.evaluate(() => {
     const rows = Array.from(document.querySelectorAll<HTMLElement>(".task-row.parent"));
     const selectors = {
-      progress: ".subtask-progress",
       important: ".important-button",
       recurrence: ".recurrence-trigger",
       addSubtask: '[aria-label="添加子任务"]',
@@ -218,6 +324,48 @@ test("keeps parent-task action columns aligned", async ({ page }) => {
     expect(column.maximumDelta).not.toBeNull();
     expect(column.maximumDelta ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
   }
+});
+
+test("uses the reclaimed progress slot for task copy without disturbing actions", async ({ page }) => {
+  await openVisualApp(page, createVisualState("standard"));
+
+  const result = await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".task-row.parent"));
+    const rowWithoutProgress = rows.find((row) => !row.querySelector(".subtask-progress"));
+    const rowWithProgress = rows.find((row) => row.querySelector(".subtask-progress"));
+
+    const geometry = (row: HTMLElement | undefined) => {
+      if (!row) return null;
+      const copy = row.querySelector<HTMLElement>(".task-copy")?.getBoundingClientRect();
+      const actions = row.querySelector<HTMLElement>(".task-actions-parent")?.getBoundingClientRect();
+      const progress = row.querySelector<HTMLElement>(".subtask-progress");
+      if (!copy || !actions) return null;
+      return {
+        copyWidth: copy.width,
+        copyToActionsGap: actions.left - copy.right,
+        progressInsideCopy: progress ? Boolean(progress.closest(".task-copy")) : null,
+        progressInsideMeta: progress ? Boolean(progress.closest(".task-meta-row")) : null,
+        progressInsideActions: progress ? Boolean(progress.closest(".task-actions-parent")) : null
+      };
+    };
+
+    return {
+      rowCount: rows.length,
+      withoutProgress: geometry(rowWithoutProgress),
+      withProgress: geometry(rowWithProgress)
+    };
+  });
+  metrics.reclaimedTaskCopySlot = result;
+
+  expect(result.rowCount).toBeGreaterThan(1);
+  expect(result.withoutProgress).not.toBeNull();
+  expect(result.withProgress).not.toBeNull();
+  expect(result.withoutProgress?.copyWidth ?? 0).toBeGreaterThanOrEqual(72);
+  expect(result.withProgress?.progressInsideCopy).toBe(true);
+  expect(result.withProgress?.progressInsideMeta).toBe(true);
+  expect(result.withProgress?.progressInsideActions).toBe(false);
+  expect(result.withoutProgress?.copyToActionsGap ?? 0).toBeGreaterThanOrEqual(7);
+  expect(result.withoutProgress?.copyToActionsGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(9);
 });
 
 test("audits visible pointer target sizes", async ({ page }) => {
@@ -437,6 +585,53 @@ test("keeps useful title width at the maximum stress setting", async ({ page }) 
   expect(result.minimumWidth).toBeGreaterThanOrEqual(72);
 });
 
+test("long-press drag reorders and immediately persists a task without a visible handle", async ({
+  page
+}) => {
+  await openVisualApp(page, createVisualState("typography"));
+  const firstTitle = "准备周一项目进度汇报并复核全部附件及会议材料确保最终版本准确无误";
+  const secondTitle = "SuperLongEnglishTaskTitleWithoutAnyWhitespaceForOverflowTesting";
+  const source = taskCard(page, firstTitle);
+  const target = taskCard(page, secondTitle);
+
+  await expect(source.locator(".task-row.parent")).not.toHaveAttribute("aria-roledescription");
+  await longPressDrag(page, source.locator(".task-title"), target.locator(".task-title"));
+
+  const visibleOrder = await page.locator(".task-row.parent .task-title").allTextContents();
+  expect(visibleOrder.indexOf(secondTitle)).toBeLessThan(visibleOrder.indexOf(firstTitle));
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem("desktodo:app-state");
+        return raw
+          ? (JSON.parse(raw) as { tasks: Array<{ id: string }> }).tasks.map((task) => task.id)
+          : [];
+      })
+    )
+    .toEqual(expect.arrayContaining(["long-english", "long-chinese"]));
+
+  const storedOrder = await page.evaluate(() => {
+    const raw = localStorage.getItem("desktodo:app-state");
+    return raw
+      ? (JSON.parse(raw) as { tasks: Array<{ id: string }> }).tasks.map((task) => task.id)
+      : [];
+  });
+  expect(storedOrder.indexOf("long-english")).toBeLessThan(storedOrder.indexOf("long-chinese"));
+});
+
+test("a normal task click does not start sorting", async ({ page }) => {
+  await openVisualApp(page, createVisualState("typography"));
+  const title = "准备周一项目进度汇报并复核全部附件及会议材料确保最终版本准确无误";
+  const titles = page.locator(".task-row.parent .task-title");
+  const before = await titles.allTextContents();
+
+  await taskCard(page, title).locator(".task-title").click();
+
+  await expect(titles).toHaveText(before);
+  await expect(page.locator(".inline-edit-input")).toHaveCount(0);
+});
+
 test("keeps every header control visible at the maximum font size", async ({ page }) => {
   await openVisualApp(page, createVisualState("typography", { fontSize: 20 }));
 
@@ -458,6 +653,26 @@ async function visibleDialogBox(page: Page, name: string): Promise<BoxMetric> {
   const dialog = page.getByRole("dialog", { name });
   await expect(dialog).toBeVisible();
   return box(dialog);
+}
+
+async function longPressDrag(page: Page, source: Locator, target: Locator) {
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  expect(sourceBox).not.toBeNull();
+  expect(targetBox).not.toBeNull();
+  if (!sourceBox || !targetBox) return;
+
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(260);
+  await page.mouse.move(
+    targetBox.x + targetBox.width / 2,
+    targetBox.y + targetBox.height * 0.8,
+    { steps: 12 }
+  );
+  await page.waitForTimeout(80);
+  await page.mouse.up();
+  await settleVisualState(page);
 }
 
 async function box(locator: ReturnType<Page["locator"]>): Promise<BoxMetric> {
