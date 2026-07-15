@@ -28,8 +28,9 @@ function task(id: string, done: boolean, children: TodoItem[] = []): TodoItem {
 
 function state(tasks: TodoItem[]): AppState {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks,
+    archivedCompletions: [],
     recurrenceSeries: [],
     settings: {
       alwaysOnTop: true,

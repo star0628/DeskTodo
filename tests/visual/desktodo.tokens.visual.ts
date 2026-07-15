@@ -44,16 +44,16 @@ test.describe("DeskTodo phase 5 to 7 token integration", () => {
     await expect(page.locator(".window-layer-control")).toHaveCSS("width", "48px");
     await expect(page.locator(".date-search-button")).toHaveCSS("width", "32px");
     await expect(page.getByRole("textbox", { name: "添加任务" })).toHaveCSS("height", "40px");
-    await expect(page.locator(".task-row.parent:not(:has(.deadline-meta))").first()).toHaveCSS(
+    await expect(page.locator(".task-row.parent:not(:has(.task-meta-row))").first()).toHaveCSS(
       "min-height",
       "44px"
     );
-    await expect(page.locator(".task-row.parent:has(.deadline-meta)").first()).toHaveCSS(
+    await expect(page.locator(".task-row.parent:has(.task-meta-row)").first()).toHaveCSS(
       "min-height",
       "52px"
     );
     await expect(page.locator(".task-actions .icon-button").first()).toHaveCSS("width", "28px");
-    await expect(page.locator(".task-actions-parent").first()).toHaveCSS("width", "160px");
+    await expect(page.locator(".task-actions-parent").first()).toHaveCSS("width", "124px");
     await expect(page.locator(".task-card").first()).toHaveCSS("border-radius", "8px");
 
     await page.getByRole("button", { name: /选择日期/ }).click();

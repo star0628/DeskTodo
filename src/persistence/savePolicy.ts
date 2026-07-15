@@ -42,6 +42,12 @@ function isTodoContentMutation(action: TodoAction): boolean {
     case "editSubtask":
     case "toggleSubtask":
     case "deleteSubtask":
+    case "deleteHistoryEntries":
+    case "restoreHistoryEntries":
+    case "importCompletionRecords":
+    case "removeImportedCompletionBatch":
+    case "reorderTasks":
+    case "reorderSubtasks":
     case "restoreTask":
     case "restoreSubtask":
     case "setTaskImportant":

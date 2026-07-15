@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { TodoAction } from "../domain/todoReducer";
-import { AppSettings, CustomThemeColors, WindowLayerMode } from "../domain/todoTypes";
+import { AppSettings, AppState, CustomThemeColors, WindowLayerMode } from "../domain/todoTypes";
 import { isTauriRuntime } from "../persistence";
 import { WindowControls } from "./WindowControls";
 import { WindowLayerControl } from "./WindowLayerControl";
@@ -13,6 +13,7 @@ interface HeaderProps {
   windowLayerMode: WindowLayerMode;
   onWindowLayerModeChange: (mode: WindowLayerMode) => void;
   settings: AppSettings;
+  appState?: AppState;
   dispatch: (action: TodoAction) => void;
   onBackgroundOpacityPreview?: (percent: number | null) => void;
   onCustomThemePreview?: (colors: CustomThemeColors | null) => void;
@@ -24,6 +25,7 @@ export function Header({
   windowLayerMode,
   onWindowLayerModeChange,
   settings,
+  appState,
   dispatch,
   onBackgroundOpacityPreview,
   onCustomThemePreview
@@ -49,6 +51,7 @@ export function Header({
       >
         <WindowLayerControl mode={windowLayerMode} onChange={onWindowLayerModeChange} />
         <SettingsDialog
+          appState={appState}
           settings={settings}
           dispatch={dispatch}
           onBackgroundOpacityPreview={onBackgroundOpacityPreview}

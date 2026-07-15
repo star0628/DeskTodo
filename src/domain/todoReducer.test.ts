@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { AppState, TodoItem } from "./todoTypes";
+import { AppState, ArchivedCompletionRecord, TodoItem } from "./todoTypes";
 import { todoReducer } from "./todoReducer";
 
 function stateWithTasks(tasks: TodoItem[] = []): AppState {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     tasks,
+    archivedCompletions: [],
     recurrenceSeries: [],
     settings: {
       alwaysOnTop: true,
@@ -128,6 +129,38 @@ describe("todoReducer", () => {
 
     expect(next.tasks).toHaveLength(1);
     expect(next.tasks[0].id).toBe("task-2");
+  });
+
+  it("reorderTasks: reorders only the requested task subset", () => {
+    const hidden = task({ id: "hidden" });
+    const first = task({ id: "first" });
+    const second = task({ id: "second" });
+    const initial = stateWithTasks([first, hidden, second]);
+
+    const next = todoReducer(initial, {
+      type: "reorderTasks",
+      orderedIds: ["second", "first"]
+    });
+
+    expect(next.tasks.map((item) => item.id)).toEqual(["second", "hidden", "first"]);
+    expect(next.tasks[0]).toBe(second);
+    expect(next.tasks[1]).toBe(hidden);
+    expect(next.tasks[2]).toBe(first);
+    expect(next.tasks[0].updatedAt).toBe(first.updatedAt);
+  });
+
+  it("reorderTasks: identical, duplicate, or missing ids are no-ops", () => {
+    const initial = stateWithTasks([task({ id: "first" }), task({ id: "second" })]);
+
+    expect(
+      todoReducer(initial, { type: "reorderTasks", orderedIds: ["first", "second"] })
+    ).toBe(initial);
+    expect(
+      todoReducer(initial, { type: "reorderTasks", orderedIds: ["first", "first"] })
+    ).toBe(initial);
+    expect(
+      todoReducer(initial, { type: "reorderTasks", orderedIds: ["first", "missing"] })
+    ).toBe(initial);
   });
 
   it("editTask/toggleTask/deleteTask: missing id returns original state", () => {
@@ -316,6 +349,51 @@ describe("todoReducer", () => {
       "child-b"
     ]);
     expect(next.tasks[0].children[1]).toBe(restored);
+  });
+
+  it("reorderSubtasks: reorders children without touching their timestamps", () => {
+    const first = task({ id: "child-first" });
+    const second = task({ id: "child-second" });
+    const parent = task({ children: [first, second] });
+    const initial = stateWithTasks([parent]);
+
+    const next = todoReducer(initial, {
+      type: "reorderSubtasks",
+      parentId: parent.id,
+      orderedIds: [second.id, first.id]
+    });
+
+    expect(next.tasks[0].children).toEqual([second, first]);
+    expect(next.tasks[0].updatedAt).toBe(parent.updatedAt);
+    expect(next.tasks[0].children[0]).toBe(second);
+  });
+
+  it("reorderSubtasks: missing parent, invalid ids, and identical order are no-ops", () => {
+    const first = task({ id: "child-first" });
+    const second = task({ id: "child-second" });
+    const initial = stateWithTasks([task({ children: [first, second] })]);
+
+    expect(
+      todoReducer(initial, {
+        type: "reorderSubtasks",
+        parentId: "missing",
+        orderedIds: [second.id, first.id]
+      })
+    ).toBe(initial);
+    expect(
+      todoReducer(initial, {
+        type: "reorderSubtasks",
+        parentId: "task-1",
+        orderedIds: [first.id, "missing"]
+      })
+    ).toBe(initial);
+    expect(
+      todoReducer(initial, {
+        type: "reorderSubtasks",
+        parentId: "task-1",
+        orderedIds: [first.id, second.id]
+      })
+    ).toBe(initial);
   });
 
   it("restoreSubtask: missing parent or duplicate child id is a no-op", () => {
@@ -674,5 +752,62 @@ describe("todoReducer", () => {
       localTime: "09:30"
     });
     expect(scheduled.recurrenceSeries[0].template.deadlineDisplayMode).toBe("dateTime");
+  });
+
+  it("importCompletionRecords: appends snapshots and rejects duplicate source refs", () => {
+    const record: ArchivedCompletionRecord = {
+      id: "archive-1",
+      sourceRef: "task:source-1:2026-07-14T02:00:00.000Z",
+      sourceTaskId: "source-1",
+      importBatchId: "batch-1",
+      kind: "task",
+      title: "导入记录",
+      parentTitle: null,
+      createdAt: "2026-07-14T01:00:00.000Z",
+      completedAt: "2026-07-14T02:00:00.000Z",
+      completedOn: "2026-07-14",
+      important: false,
+      scheduledFor: null,
+      deadlineAt: null,
+      recurrenceLabel: null
+    };
+    const initial = stateWithTasks();
+    const imported = todoReducer(initial, { type: "importCompletionRecords", records: [record] });
+
+    expect(imported.archivedCompletions).toEqual([record]);
+    expect(todoReducer(imported, { type: "importCompletionRecords", records: [record] })).toBe(
+      imported
+    );
+  });
+
+  it("removeImportedCompletionBatch: removes only the requested import batch", () => {
+    const makeRecord = (id: string, batch: string): ArchivedCompletionRecord => ({
+      id,
+      sourceRef: `source:${id}`,
+      sourceTaskId: id,
+      importBatchId: batch,
+      kind: "task",
+      title: id,
+      parentTitle: null,
+      createdAt: "2026-07-14T01:00:00.000Z",
+      completedAt: "2026-07-14T02:00:00.000Z",
+      completedOn: "2026-07-14",
+      important: false,
+      scheduledFor: null,
+      deadlineAt: null,
+      recurrenceLabel: null
+    });
+    const first = makeRecord("first", "batch-1");
+    const second = makeRecord("second", "batch-2");
+    const initial = { ...stateWithTasks(), archivedCompletions: [first, second] };
+    const next = todoReducer(initial, {
+      type: "removeImportedCompletionBatch",
+      importBatchId: "batch-1"
+    });
+
+    expect(next.archivedCompletions).toEqual([second]);
+    expect(
+      todoReducer(next, { type: "removeImportedCompletionBatch", importBatchId: "missing" })
+    ).toBe(next);
   });
 });

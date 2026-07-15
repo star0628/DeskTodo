@@ -19,6 +19,7 @@ The current development line is v0.2.0. The validated `v0.1.0-personal-release` 
 - Tauri window-state
 - Tauri single-instance
 - Tauri autostart
+- Tauri dialog and file-system plugins
 
 ## Development
 
@@ -96,13 +97,16 @@ Browser development uses localStorage instead. Do not attach a real Store file t
 - Previous-day navigation and a compact dark Chinese calendar for reviewing daily completion history.
 - Calendar completion dots with accessible per-day completion counts.
 - Fully completed work grouped in a collapsible section below active work.
-- Eight-second undo for parent-task and subtask deletion.
+- Eight-second undo for parent-task, subtask, and confirmed historical-record deletion.
 - `Ctrl+N` focuses Quick Add on Today when no editor or calendar is active.
 - `Ctrl+Z` restores the pending deletion when focus is outside an editor.
 - A compact derived completion line under the header progress count.
 - Focus follows tasks moved between active and completed groups and returns to an item restored by undo.
 - Short compositor-friendly UI feedback that respects the Windows reduced-motion preference.
-- Read-only historical completion lists, including parent context for completed subtasks.
+- Historical completion lists with parent context and an explicit selection mode for confirmed cleanup.
+- Versioned UTF-8 completion-history export with an inclusive local-date range and native Save dialog.
+- Validated completion-history import with preview, duplicate/conflict skipping, and per-import undo.
+- Browser export/import fallback through Blob downloads and local file selection.
 - Local-midnight, window-focus, and visibility refresh so the Today view rolls over after sleep or tray use.
 - Pure reducer no-op handling for missing task ids.
 - Tauri Store persistence through a repository layer.
@@ -124,11 +128,11 @@ Browser development uses localStorage instead. Do not attach a real Store file t
 
 DeskTodo records both the exact completion timestamp and the local calendar date when a task or subtask is checked. The Today view is derived rather than destructively cleaned: unfinished work remains visible across days, work completed today stays visible until the local day changes, and older completed work remains available from the date navigator.
 
-Historical dates are intentionally read-only. Quick Add and task mutation controls remain available only on Today, which prevents accidental changes to prior completion records. Deadlines belong to Today tasks and do not turn historical completion views into editable schedules.
+Historical dates remain read-only during normal review. Quick Add and editing controls are available only on Today. When cleanup is required, `选择` enters a dedicated selection mode; deletion requires a second confirmation, reports any child records affected on other dates, and can be undone for eight seconds. A completed parent that still contains unfinished children is protected from historical deletion. Deadlines belong to Today tasks and do not turn historical completion views into editable schedules.
 
 The calendar is keyboard accessible, uses Monday as the first day of the week, and prevents future-date selection. A dot under a date means at least one parent task or subtask was completed on that date; its accessible day label includes the exact count. Today keeps active work above a collapsible completed section. A completed parent with an unfinished child remains in the active area so open work is never hidden.
 
-State schema v7 contains completion history, visual settings, custom theme seeds, importance, recurrence series, optional deadlines, and each task's deadline display mode. Valid v1-v6 data is migrated in memory; the first subsequent save preserves the original state under the matching versioned backup key before writing schema v7. Existing v6 deadlines migrate to countdown mode, preserving their exact timestamp and current visual behavior. Because v0.1.0 did not store a dedicated completion timestamp, already-completed v1 tasks use their last `updatedAt` value as a best-effort historical completion time. New v0.2 completions are recorded exactly.
+State schema v8 contains live tasks, imported completion snapshots, visual settings, custom theme seeds, importance, recurrence series, optional deadlines, and each task's deadline display mode. Valid v1-v7 data is migrated in memory; the first subsequent save preserves the original state under the matching versioned backup key before writing schema v8. Existing v6 deadlines migrate to countdown mode, preserving their exact timestamp and current visual behavior. Because v0.1.0 did not store a dedicated completion timestamp, already-completed v1 tasks use their last `updatedAt` value as a best-effort historical completion time. New v0.2 completions are recorded exactly.
 
 ## Importance, Search, and Recurrence
 
@@ -152,6 +156,14 @@ Open the small gear button in the Header. Settings apply immediately and are per
 - Completed section: controls whether completed work starts collapsed in the Today view.
 - Startup launch: reads and changes the actual operating-system registration using Tauri autostart. It is disabled in browser development because no desktop registration exists there.
 
+### Completion Record Transfer
+
+The Data section exports completed parent tasks and subtasks for an inclusive local-date range. The generated `.desktodo.txt` file is pretty-printed UTF-8 JSON: it remains readable in a text editor while retaining a versioned structure suitable for strict import validation. Exact timestamps use ISO/RFC 3339 strings, while `completedOn` preserves the source device's local completion date.
+
+Import is intentionally limited to completion history. It does not recreate unfinished work, activate recurrence series, or overwrite themes and other settings. The app parses and validates the whole file before showing a preview; malformed or unsupported files leave Store data unchanged. Re-importing the same records is idempotent, and records with the same source identity but different content are reported as conflicts and skipped.
+
+DeskTodo currently records task creation time and completion time, not a true work-session start time. Exports therefore label these fields as creation and completion; they must not be interpreted as measured working duration.
+
 Validate startup launch against an installed or fixed-path release executable. A development binary can move or be replaced, which makes it a poor target for a persistent Windows startup entry. DeskTodo does not start hidden; the existing single-instance behavior prevents a second window if the user launches it again manually.
 
 ## Typography
@@ -167,6 +179,7 @@ SimHei is a Windows Simplified Chinese supplemental font. The target Windows ins
 - No notification reminders.
 - No Pomodoro.
 - No time tracking.
+- Completion-history transfer is not a full disaster-recovery backup for unfinished tasks, active recurrence, or settings.
 - No projects.
 - No tags.
 - No natural language date parsing.
@@ -182,9 +195,9 @@ Window layer modes:
 
 - Top: uses Tauri `setAlwaysOnTop(true)` and keeps the widget above normal windows.
 - Normal: clears top and bottom z-order flags while keeping the widget tray-first and skipped from the taskbar.
-- Desktop: uses Tauri `setAlwaysOnBottom(true)` as a best-effort desktop sticker mode. It is not a WorkerW/Progman desktop embedding and can sit behind active windows on Windows. The tray Show item and second launch request the window to show/focus and then reapply the selected layer mode, so UI, Store, and native window state stay consistent. If Windows keeps the bottom window covered by other apps, clear the covering window or switch DeskTodo back to Top once it is visible.
+- Desktop: uses Tauri `setAlwaysOnBottom(true)` as a best-effort desktop sticker mode. It is not a WorkerW/Progman desktop embedding and can sit behind active windows or the Windows desktop surface. To keep the widget recoverable after Show Desktop, the tray Show action, tray left-click, and a second launch temporarily raise the native window; if the saved mode was Desktop, DeskTodo explicitly changes it to Normal and saves that change so the control, Store, and native z-order remain consistent.
 
-Tray interaction is intentionally conservative: use the right-click tray menu for Show, Hide, and Quit. Left-click tray toggling is disabled to avoid platform-specific behavior.
+Tray interaction supports left-click to show the widget. The right-click menu remains available for Show, Hide, and Quit.
 
 Transparent windows can depend on the local Windows compositor, GPU driver, and WebView2 behavior. The code is configured for the target widget style, but a development machine with transparency limitations may render the window background differently.
 

@@ -14,6 +14,7 @@ import {
 } from "./deadline";
 import {
   AppState,
+  ArchivedCompletionRecord,
   ColorThemeId,
   CustomThemeColors,
   DeadlineDisplayMode,
@@ -33,6 +34,13 @@ import {
   getColorScheme,
   normalizeCustomThemeColors
 } from "../settings/customTheme";
+import { reorderSubset } from "./todoOrdering";
+import {
+  deleteHistoryEntries,
+  HistoryDeleteTarget,
+  HistoryDeletionSnapshot,
+  restoreHistoryEntries
+} from "./historyDeletion";
 
 export type RecurringDeleteBehavior = "skip" | "stop";
 
@@ -45,6 +53,12 @@ export type TodoAction =
   | { type: "editSubtask"; parentId: TodoId; childId: TodoId; title: string }
   | { type: "toggleSubtask"; parentId: TodoId; childId: TodoId }
   | { type: "deleteSubtask"; parentId: TodoId; childId: TodoId }
+  | { type: "deleteHistoryEntries"; targets: readonly HistoryDeleteTarget[] }
+  | { type: "restoreHistoryEntries"; snapshot: HistoryDeletionSnapshot }
+  | { type: "importCompletionRecords"; records: readonly ArchivedCompletionRecord[] }
+  | { type: "removeImportedCompletionBatch"; importBatchId: string }
+  | { type: "reorderTasks"; orderedIds: readonly TodoId[] }
+  | { type: "reorderSubtasks"; parentId: TodoId; orderedIds: readonly TodoId[] }
   | { type: "restoreTask"; task: TodoItem; index: number; series?: RecurrenceSeries }
   | { type: "restoreSubtask"; parentId: TodoId; task: TodoItem; index: number }
   | { type: "setTaskImportant"; id: TodoId; important: boolean }
@@ -164,6 +178,11 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
       };
     }
 
+    case "reorderTasks": {
+      const tasks = reorderSubset(state.tasks, action.orderedIds);
+      return tasks === state.tasks ? state : { ...state, tasks: [...tasks] };
+    }
+
     case "addSubtask": {
       const title = normalizeTitle(action.title);
       if (!title) return state;
@@ -179,6 +198,19 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
         task.id === action.parentId ? updatedParent : task
       );
       return withRecurringLifecycle(state, tasks, updatedParent, timestamp);
+    }
+
+    case "reorderSubtasks": {
+      const parent = state.tasks.find((task) => task.id === action.parentId);
+      if (!parent) return state;
+      const children = reorderSubset(parent.children, action.orderedIds);
+      if (children === parent.children) return state;
+
+      const updatedParent = { ...parent, children: [...children] };
+      return {
+        ...state,
+        tasks: state.tasks.map((task) => (task.id === parent.id ? updatedParent : task))
+      };
     }
 
     case "editSubtask": {
@@ -244,6 +276,53 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
         task.id === action.parentId ? updatedParent : task
       );
       return withRecurringLifecycle(state, tasks, updatedParent, timestamp);
+    }
+
+    case "deleteHistoryEntries":
+      return deleteHistoryEntries(state, action.targets);
+
+    case "restoreHistoryEntries":
+      return restoreHistoryEntries(state, action.snapshot);
+
+    case "importCompletionRecords": {
+      if (action.records.length === 0) return state;
+      const existingIds = new Set([
+        ...state.archivedCompletions.map((record) => record.id),
+        ...state.tasks.flatMap((task) => [task.id, ...task.children.map((child) => child.id)])
+      ]);
+      const existingSourceRefs = new Set(
+        state.archivedCompletions.map((record) => record.sourceRef)
+      );
+      const incomingIds = new Set<string>();
+      const incomingSourceRefs = new Set<string>();
+      for (const record of action.records) {
+        if (
+          existingIds.has(record.id) ||
+          existingSourceRefs.has(record.sourceRef) ||
+          incomingIds.has(record.id) ||
+          incomingSourceRefs.has(record.sourceRef)
+        ) {
+          return state;
+        }
+        incomingIds.add(record.id);
+        incomingSourceRefs.add(record.sourceRef);
+      }
+      return {
+        ...state,
+        archivedCompletions: [...state.archivedCompletions, ...action.records]
+      };
+    }
+
+    case "removeImportedCompletionBatch": {
+      if (!state.archivedCompletions.some((record) => record.importBatchId === action.importBatchId)) {
+        return state;
+      }
+      return {
+        ...state,
+        archivedCompletions: state.archivedCompletions.filter(
+          (record) => record.importBatchId !== action.importBatchId
+        )
+      };
     }
 
     case "restoreTask": {

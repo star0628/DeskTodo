@@ -236,10 +236,18 @@ describe("dailyViewSelectors", () => {
 
     expect(entries).toEqual([
       {
-        id: "parent/child",
+        key: "subtask:parent:child:2026-07-13",
+        target: {
+          kind: "subtask",
+          parentId: "parent",
+          childId: "child",
+          completedOn: "2026-07-13"
+        },
         title: "child",
         parentTitle: "parent",
-        completedAt: "2026-07-13T08:00:00.000Z"
+        completedAt: "2026-07-13T08:00:00.000Z",
+        canDelete: true,
+        blockedReason: null
       }
     ]);
   });
@@ -265,6 +273,53 @@ describe("dailyViewSelectors", () => {
       "2026-07-13"
     );
 
-    expect(entries.map((entry) => entry.id)).toEqual(["first", "second"]);
+    expect(entries.map((entry) => entry.target)).toEqual([
+      { kind: "task", taskId: "first", completedOn: "2026-07-13" },
+      { kind: "task", taskId: "second", completedOn: "2026-07-13" }
+    ]);
+  });
+
+  it("marks completed parents with open children as unsafe to delete from history", () => {
+    const entries = getCompletedEntriesForDate(
+      state([task("parent", "2026-07-13", [task("open-child", null)])]),
+      "2026-07-13"
+    );
+
+    expect(entries[0]).toMatchObject({
+      canDelete: false,
+      blockedReason: "仍有未完成子任务"
+    });
+  });
+
+  it("includes imported completion records in history and calendar counts only", () => {
+    const appState: AppState = {
+      ...fallbackDefaultState(),
+      archivedCompletions: [
+        {
+          id: "archive-1",
+          sourceRef: "source-1",
+          sourceTaskId: "task-1",
+          importBatchId: "batch-1",
+          kind: "subtask",
+          title: "导入子任务",
+          parentTitle: "导入父任务",
+          createdAt: "2026-07-13T07:00:00.000Z",
+          completedAt: "2026-07-13T08:00:00.000Z",
+          completedOn: "2026-07-13",
+          important: false,
+          scheduledFor: null,
+          deadlineAt: null,
+          recurrenceLabel: null
+        }
+      ]
+    };
+
+    expect(getTodayTasks(appState, "2026-07-13")).toEqual([]);
+    expect(getCompletedEntriesForDate(appState, "2026-07-13")[0]).toMatchObject({
+      title: "导入子任务",
+      parentTitle: "导入父任务",
+      target: { kind: "archive", recordId: "archive-1" }
+    });
+    expect(getCompletionCountByDate(appState).get("2026-07-13")).toBe(1);
   });
 });

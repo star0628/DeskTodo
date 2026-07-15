@@ -11,6 +11,14 @@ describe("DeskTodo material and motion contract", () => {
     expect(globalsCss.match(/backdrop-filter:\s*blur/g)).toHaveLength(1);
   });
 
+  it("keeps the transparent native window edge free of a CSS border and shadow", () => {
+    const shell = getRuleBlock(".app-shell");
+
+    expect(shell).toContain("border: var(--stroke-thin) solid transparent");
+    expect(shell).toContain("background-clip: padding-box");
+    expect(shell).toContain("box-shadow: none");
+  });
+
   it("uses one semantic popup surface for every primary overlay", () => {
     const surface = getRuleBlock(".dialog-surface");
     expect(surface).toContain("background: var(--surface-popup)");

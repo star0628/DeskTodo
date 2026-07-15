@@ -1,4 +1,9 @@
 import { AppState, LocalDateKey, TodoItem } from "./todoTypes";
+import {
+  getHistoryTargetAvailability,
+  getHistoryTargetKey,
+  HistoryDeleteTarget
+} from "./historyDeletion";
 
 export interface DailyProgress {
   done: number;
@@ -6,10 +11,13 @@ export interface DailyProgress {
 }
 
 export interface DailyCompletionEntry {
-  id: string;
+  key: string;
+  target: HistoryDeleteTarget;
   title: string;
   parentTitle: string | null;
   completedAt: string;
+  canDelete: boolean;
+  blockedReason: string | null;
 }
 
 export interface TodayTaskGroups {
@@ -78,24 +86,55 @@ export function getCompletedEntriesForDate(
 
   for (const task of state.tasks) {
     if (task.done && task.completedOn === date && task.completedAt) {
+      const target: HistoryDeleteTarget = { kind: "task", taskId: task.id, completedOn: date };
+      const availability = getHistoryTargetAvailability(state, target);
       entries.push({
-        id: task.id,
+        key: getHistoryTargetKey(target),
+        target,
         title: task.title,
         parentTitle: null,
-        completedAt: task.completedAt
+        completedAt: task.completedAt,
+        ...availability
       });
     }
 
     for (const child of task.children) {
       if (child.done && child.completedOn === date && child.completedAt) {
+        const target: HistoryDeleteTarget = {
+          kind: "subtask",
+          parentId: task.id,
+          childId: child.id,
+          completedOn: date
+        };
+        const availability = getHistoryTargetAvailability(state, target);
         entries.push({
-          id: `${task.id}/${child.id}`,
+          key: getHistoryTargetKey(target),
+          target,
           title: child.title,
           parentTitle: task.title,
-          completedAt: child.completedAt
+          completedAt: child.completedAt,
+          ...availability
         });
       }
     }
+  }
+
+  for (const record of state.archivedCompletions) {
+    if (record.completedOn !== date) continue;
+    const target: HistoryDeleteTarget = {
+      kind: "archive",
+      recordId: record.id,
+      completedOn: date
+    };
+    const availability = getHistoryTargetAvailability(state, target);
+    entries.push({
+      key: getHistoryTargetKey(target),
+      target,
+      title: record.title,
+      parentTitle: record.parentTitle,
+      completedAt: record.completedAt,
+      ...availability
+    });
   }
 
   return entries.sort((left, right) => left.completedAt.localeCompare(right.completedAt));
@@ -107,6 +146,10 @@ export function getCompletionCountByDate(state: AppState): Map<LocalDateKey, num
   for (const task of state.tasks) {
     addCompletionCount(counts, task);
     for (const child of task.children) addCompletionCount(counts, child);
+  }
+
+  for (const record of state.archivedCompletions) {
+    counts.set(record.completedOn, (counts.get(record.completedOn) ?? 0) + 1);
   }
 
   return counts;

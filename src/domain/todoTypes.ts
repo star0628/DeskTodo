@@ -48,6 +48,25 @@ export interface TodoItem {
   children: TodoItem[];
 }
 
+export type CompletionRecordKind = "task" | "subtask";
+
+export interface ArchivedCompletionRecord {
+  id: string;
+  sourceRef: string;
+  sourceTaskId: string;
+  importBatchId: string;
+  kind: CompletionRecordKind;
+  title: string;
+  parentTitle: string | null;
+  createdAt: string;
+  completedAt: string;
+  completedOn: LocalDateKey;
+  important: boolean;
+  scheduledFor: LocalDateKey | null;
+  deadlineAt: string | null;
+  recurrenceLabel: string | null;
+}
+
 export type WindowLayerMode = "alwaysOnTop" | "normal" | "alwaysOnBottom";
 export type HexColor = `#${string}`;
 
@@ -85,8 +104,9 @@ export interface AppSettings {
 }
 
 export interface AppState {
-  schemaVersion: 7;
+  schemaVersion: 8;
   tasks: TodoItem[];
+  archivedCompletions: ArchivedCompletionRecord[];
   recurrenceSeries: RecurrenceSeries[];
   settings: AppSettings;
 }

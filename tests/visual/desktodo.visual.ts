@@ -138,29 +138,39 @@ test.describe("DeskTodo phase 5 to 7 visual baseline", () => {
     await page.getByRole("button", { name: "编辑强调颜色颜色编码" }).click();
     const picker = page.getByRole("region", { name: "编辑强调颜色" });
     await expect(picker).toBeVisible();
-    await picker.evaluate((element) => element.scrollIntoView({ block: "start" }));
+    await picker.evaluate((element) =>
+      element.scrollIntoView({ behavior: "instant", block: "nearest", inline: "nearest" })
+    );
     await settleVisualState(page);
 
     const overflow = await page.locator(".settings-content").evaluate((element) => {
       const bounds = element.getBoundingClientRect();
       return {
         horizontal: element.scrollWidth - element.clientWidth,
+        scrollLeft: element.scrollLeft,
         vertical: element.scrollHeight - element.clientHeight,
         overflowX: getComputedStyle(element).overflowX,
         offenders: [...element.querySelectorAll<HTMLElement>("*")]
           .filter((child) => {
             const box = child.getBoundingClientRect();
-            return box.width > 0 && box.right - bounds.right > 1;
+            return (
+              box.width > 0 &&
+              (box.right - bounds.right > 1 || bounds.left - box.left > 1)
+            );
           })
           .map((child) => ({
             tag: child.tagName,
             className: child.className,
+            left: child.getBoundingClientRect().left,
             right: child.getBoundingClientRect().right,
+            rootLeft: bounds.left,
             rootRight: bounds.right
           }))
       };
     });
     expect(overflow.offenders).toEqual([]);
+    expect(overflow.horizontal).toBe(0);
+    expect(overflow.scrollLeft).toBe(0);
     expect(overflow.overflowX).toBe("hidden");
     expect(overflow.vertical).toBeGreaterThan(0);
     await captureBaseline(page, "overlay-custom-theme-picker-300x280.png");

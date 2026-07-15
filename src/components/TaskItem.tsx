@@ -1,5 +1,8 @@
 import { KeyboardEvent, RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Star, Trash2 } from "lucide-react";
+import { DraggableSyntheticListeners } from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { RecurringDeleteBehavior, TodoAction } from "../domain/todoReducer";
 import { getParentSubtaskProgress } from "../domain/todoSelectors";
 import {
@@ -12,6 +15,12 @@ import { scheduleTodoFocus } from "../utils/focus";
 import { DeadlineMeta } from "./DeadlineMeta";
 import { RecurringDeleteDialog } from "./RecurringDeleteDialog";
 import { ScheduleControl } from "./ScheduleControl";
+import {
+  createSubtaskSortGroups,
+  createTaskSortData,
+  getSortableItemId,
+  TaskSortData
+} from "./taskSorting";
 
 interface TaskItemProps {
   task: TodoItemType;
@@ -20,6 +29,7 @@ interface TaskItemProps {
   recurrenceRule?: RecurrenceRule;
   dispatch: (action: TodoAction) => void;
   progress?: { done: number; total: number };
+  sortData: TaskSortData;
   onDeleteTask: (task: TodoItemType, behavior?: RecurringDeleteBehavior) => void;
   onDeleteSubtask: (parentId: TodoId, task: TodoItemType) => void;
 }
@@ -29,6 +39,7 @@ interface SubtaskProps {
   task: TodoItemType;
   dispatch: (action: TodoAction) => void;
   onDelete: (parentId: TodoId, task: TodoItemType) => void;
+  sortData: TaskSortData;
 }
 
 export function TaskItem({
@@ -38,6 +49,7 @@ export function TaskItem({
   recurrenceRule,
   dispatch,
   progress: progressOverride,
+  sortData,
   onDeleteTask,
   onDeleteSubtask
 }: TaskItemProps) {
@@ -46,6 +58,13 @@ export function TaskItem({
   const addSubtaskButtonRef = useRef<HTMLButtonElement>(null);
   const deleteTaskButtonRef = useRef<HTMLButtonElement>(null);
   const progress = progressOverride ?? getParentSubtaskProgress(task);
+  const subtaskSortGroups = createSubtaskSortGroups(task.id, task.children);
+  const sortable = useSortable({
+    id: getSortableItemId("parent", task.id),
+    data: sortData,
+    disabled: isAddingSubtask || isDeleteDialogOpen,
+    transition: { duration: 180, easing: "cubic-bezier(0.2, 0, 0, 1)" }
+  });
 
   function deleteTask(behavior?: RecurringDeleteBehavior) {
     onDeleteTask(task, behavior);
@@ -60,23 +79,23 @@ export function TaskItem({
   }
 
   return (
-    <article className="task-card">
+    <article
+      ref={sortable.setNodeRef}
+      className="task-card"
+      data-dragging={sortable.isDragging ? "true" : undefined}
+      style={{
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+        position: sortable.isDragging ? "relative" : undefined,
+        zIndex: sortable.isDragging ? 2 : undefined
+      }}
+    >
       <TaskRow
         task={task}
         level="parent"
+        subtaskProgress={progress}
         rightSlot={
           <>
-            <span
-              className="subtask-progress"
-              aria-hidden={progress.total === 0 ? "true" : undefined}
-              aria-label={
-                progress.total > 0
-                  ? `子任务完成 ${progress.done}，共 ${progress.total} 项`
-                  : undefined
-              }
-            >
-              {progress.total > 0 ? `${progress.done} / ${progress.total}` : null}
-            </span>
             <button
               type="button"
               className={`icon-button important-button${task.important ? " active" : ""}`}
@@ -135,18 +154,30 @@ export function TaskItem({
         onToggle={() => dispatch({ type: "toggleTask", id: task.id })}
         onEdit={(title) => dispatch({ type: "editTask", id: task.id, title })}
         nowMs={nowMs}
+        dragActivatorRef={sortable.setActivatorNodeRef}
+        dragListeners={sortable.listeners}
       />
 
       {(task.children.length > 0 || isAddingSubtask) && (
         <div className="subtask-list">
-          {task.children.map((child) => (
-            <Subtask
-              key={child.id}
-              parentId={task.id}
-              task={child}
-              dispatch={dispatch}
-              onDelete={onDeleteSubtask}
-            />
+          {subtaskSortGroups.map((group) => (
+            <SortableContext
+              key={group.containerId}
+              id={group.containerId}
+              items={group.sortableIds}
+              strategy={verticalListSortingStrategy}
+            >
+              {group.tasks.map((child) => (
+                <Subtask
+                  key={child.id}
+                  parentId={task.id}
+                  task={child}
+                  dispatch={dispatch}
+                  onDelete={onDeleteSubtask}
+                  sortData={createTaskSortData(group, child.id)}
+                />
+              ))}
+            </SortableContext>
           ))}
           {isAddingSubtask && (
             <InlineCreateInput
@@ -172,7 +203,13 @@ export function TaskItem({
   );
 }
 
-function Subtask({ parentId, task, dispatch, onDelete }: SubtaskProps) {
+function Subtask({ parentId, task, dispatch, onDelete, sortData }: SubtaskProps) {
+  const sortable = useSortable({
+    id: getSortableItemId("subtask", task.id, parentId),
+    data: sortData,
+    transition: { duration: 180, easing: "cubic-bezier(0.2, 0, 0, 1)" }
+  });
+
   return (
     <TaskRow
       task={task}
@@ -189,6 +226,16 @@ function Subtask({ parentId, task, dispatch, onDelete }: SubtaskProps) {
       }
       onToggle={() => dispatch({ type: "toggleSubtask", parentId, childId: task.id })}
       onEdit={(title) => dispatch({ type: "editSubtask", parentId, childId: task.id, title })}
+      sortableRef={sortable.setNodeRef}
+      sortableStyle={{
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+        position: sortable.isDragging ? "relative" : undefined,
+        zIndex: sortable.isDragging ? 2 : undefined
+      }}
+      isDragging={sortable.isDragging}
+      dragActivatorRef={sortable.setActivatorNodeRef}
+      dragListeners={sortable.listeners}
     />
   );
 }
@@ -199,13 +246,39 @@ interface TaskRowProps {
   rightSlot: React.ReactNode;
   onToggle: () => void;
   onEdit: (title: string) => void;
+  subtaskProgress?: { done: number; total: number };
   nowMs?: number;
+  sortableRef?: (element: HTMLElement | null) => void;
+  sortableStyle?: React.CSSProperties;
+  isDragging?: boolean;
+  dragActivatorRef?: (element: HTMLElement | null) => void;
+  dragListeners?: DraggableSyntheticListeners;
 }
 
-function TaskRow({ task, level, rightSlot, onToggle, onEdit, nowMs }: TaskRowProps) {
+function TaskRow({
+  task,
+  level,
+  rightSlot,
+  onToggle,
+  onEdit,
+  subtaskProgress,
+  nowMs,
+  sortableRef,
+  sortableStyle,
+  isDragging = false,
+  dragActivatorRef,
+  dragListeners
+}: TaskRowProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(task.title);
   const isCommittingRef = useRef(false);
+  const setSortableRowRef = useCallback(
+    (element: HTMLElement | null) => {
+      sortableRef?.(element);
+      dragActivatorRef?.(element);
+    },
+    [dragActivatorRef, sortableRef]
+  );
 
   function saveEdit() {
     if (isCommittingRef.current) return;
@@ -246,7 +319,14 @@ function TaskRow({ task, level, rightSlot, onToggle, onEdit, nowMs }: TaskRowPro
   }
 
   return (
-    <div className={`task-row ${level}`} data-todo-id={task.id}>
+    <div
+      ref={setSortableRowRef}
+      className={`task-row ${level}`}
+      data-todo-id={task.id}
+      data-dragging={isDragging ? "true" : undefined}
+      style={sortableStyle}
+      {...(!isEditing ? dragListeners : undefined)}
+    >
       <label className="task-checkbox-hit">
         <input
           type="checkbox"
@@ -260,35 +340,51 @@ function TaskRow({ task, level, rightSlot, onToggle, onEdit, nowMs }: TaskRowPro
         />
       </label>
       <div className="task-copy">
-        {isEditing ? (
-          <input
-            className="inline-edit-input"
-            value={draftTitle}
-            onChange={(event) => setDraftTitle(event.target.value)}
-            onKeyDown={handleEditKeyDown}
-            onBlur={() => {
-              if (isEditing) saveEdit();
-            }}
-            autoFocus
-          />
-        ) : (
-          <button
-            type="button"
-            className={`task-title ${task.done ? "done" : ""}`}
-            onDoubleClick={startEdit}
-            title={`${task.title}（双击编辑）`}
-          >
-            {task.title}
-          </button>
-        )}
-        {level === "parent" && task.deadlineAt && nowMs !== undefined && (
-          <DeadlineMeta
-            deadlineAt={task.deadlineAt}
-            displayMode={task.deadlineDisplayMode}
-            nowMs={nowMs}
-            done={task.done}
-          />
-        )}
+        <div className="task-heading-row">
+          {isEditing ? (
+            <input
+              className="inline-edit-input"
+              value={draftTitle}
+              onChange={(event) => setDraftTitle(event.target.value)}
+              onKeyDown={handleEditKeyDown}
+              onBlur={() => {
+                if (isEditing) saveEdit();
+              }}
+              autoFocus
+            />
+          ) : (
+            <button
+              type="button"
+              className={`task-title ${task.done ? "done" : ""}`}
+              onDoubleClick={startEdit}
+              title={`${task.title}（双击编辑）`}
+            >
+              {task.title}
+            </button>
+          )}
+        </div>
+        {level === "parent" &&
+          ((task.deadlineAt && nowMs !== undefined) ||
+            (subtaskProgress && subtaskProgress.total > 0)) && (
+            <div className="task-meta-row">
+              {task.deadlineAt && nowMs !== undefined && (
+                <DeadlineMeta
+                  deadlineAt={task.deadlineAt}
+                  displayMode={task.deadlineDisplayMode}
+                  nowMs={nowMs}
+                  done={task.done}
+                />
+              )}
+              {subtaskProgress && subtaskProgress.total > 0 && (
+                <span
+                  className="subtask-progress"
+                  aria-label={`子任务完成 ${subtaskProgress.done}，共 ${subtaskProgress.total} 项`}
+                >
+                  {subtaskProgress.done} / {subtaskProgress.total}
+                </span>
+              )}
+            </div>
+          )}
       </div>
       <div className={`task-actions task-actions-${level}`}>{rightSlot}</div>
     </div>

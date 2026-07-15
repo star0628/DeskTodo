@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { todoReducer } from "../domain/todoReducer";
-import { AppState, TodoItem } from "../domain/todoTypes";
+import { AppState, ArchivedCompletionRecord, TodoItem } from "../domain/todoTypes";
 import { fallbackDefaultState } from "./appStateSchema";
 import { LoadStatus } from "./appStateRepository";
 import { shouldSaveTodoMutation } from "./savePolicy";
@@ -346,5 +346,110 @@ describe("savePolicy", () => {
     } as const;
     const childState = todoReducer(previousState, restoreChild);
     expect(shouldSave({ previousState, nextState: childState, action: restoreChild })).toBe(true);
+  });
+
+  it("saves real history deletion and restore actions but skips invalid history no-ops", () => {
+    const completed = task({ id: "history", done: true });
+    const previousState = state([completed]);
+    const deleteAction = {
+      type: "deleteHistoryEntries",
+      targets: [{ kind: "task", taskId: completed.id, completedOn: completed.completedOn! }]
+    } as const;
+    const deletedState = todoReducer(previousState, deleteAction);
+
+    expect(
+      shouldSave({ previousState, nextState: deletedState, action: deleteAction })
+    ).toBe(true);
+
+    const invalidAction = {
+      type: "deleteHistoryEntries",
+      targets: [{ kind: "task", taskId: "missing", completedOn: "2026-01-01" }]
+    } as const;
+    expect(
+      shouldSave({
+        previousState,
+        nextState: todoReducer(previousState, invalidAction),
+        action: invalidAction
+      })
+    ).toBe(false);
+
+    const planSnapshot = {
+      parents: [{ task: completed, index: 0 }],
+      children: []
+    };
+    const restoreAction = { type: "restoreHistoryEntries", snapshot: planSnapshot } as const;
+    const restoredState = todoReducer(deletedState, restoreAction);
+    expect(
+      shouldSave({ previousState: deletedState, nextState: restoredState, action: restoreAction })
+    ).toBe(true);
+  });
+
+  it("saves real parent and child reorder mutations but skips unchanged order", () => {
+    const childA = task({ id: "child-a" });
+    const childB = task({ id: "child-b" });
+    const parentA = task({ id: "parent-a", children: [childA, childB] });
+    const parentB = task({ id: "parent-b" });
+    const previousState = state([parentA, parentB]);
+
+    const parentAction = {
+      type: "reorderTasks",
+      orderedIds: [parentB.id, parentA.id]
+    } as const;
+    const reorderedParents = todoReducer(previousState, parentAction);
+    expect(
+      shouldSave({ previousState, nextState: reorderedParents, action: parentAction })
+    ).toBe(true);
+
+    const childAction = {
+      type: "reorderSubtasks",
+      parentId: parentA.id,
+      orderedIds: [childB.id, childA.id]
+    } as const;
+    const reorderedChildren = todoReducer(previousState, childAction);
+    expect(
+      shouldSave({ previousState, nextState: reorderedChildren, action: childAction })
+    ).toBe(true);
+
+    const unchangedAction = {
+      type: "reorderTasks",
+      orderedIds: [parentA.id, parentB.id]
+    } as const;
+    const unchanged = todoReducer(previousState, unchangedAction);
+    expect(unchanged).toBe(previousState);
+    expect(
+      shouldSave({ previousState, nextState: unchanged, action: unchangedAction })
+    ).toBe(false);
+  });
+
+  it("saves imported completion content, including after an invalid load", () => {
+    const record: ArchivedCompletionRecord = {
+      id: "archive-1",
+      sourceRef: "source-1",
+      sourceTaskId: "task-1",
+      importBatchId: "batch-1",
+      kind: "task",
+      title: "导入记录",
+      parentTitle: null,
+      createdAt: "2026-07-14T01:00:00.000Z",
+      completedAt: "2026-07-14T02:00:00.000Z",
+      completedOn: "2026-07-14",
+      important: false,
+      scheduledFor: null,
+      deadlineAt: null,
+      recurrenceLabel: null
+    };
+    const previousState = state([]);
+    const action = { type: "importCompletionRecords", records: [record] } as const;
+    const nextState = todoReducer(previousState, action);
+
+    expect(
+      shouldSaveTodoMutation({
+        hasHydrated: true,
+        loadStatus: "invalid",
+        previousState,
+        nextState,
+        action
+      })
+    ).toBe(true);
   });
 });
