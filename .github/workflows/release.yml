@@ -34,6 +34,22 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Verify release version
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json -AsHashtable)['version']
+          $lockVersion = (Get-Content package-lock.json -Raw | ConvertFrom-Json -AsHashtable)['version']
+          $tauriVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json -AsHashtable)['version']
+          $cargoMatch = Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1
+          $cargoVersion = $cargoMatch.Matches[0].Groups[1].Value
+          $versions = @($packageVersion, $lockVersion, $tauriVersion, $cargoVersion) | Select-Object -Unique
+          if ($versions.Count -ne 1) {
+            throw "Release versions do not match: package=$packageVersion lock=$lockVersion tauri=$tauriVersion cargo=$cargoVersion"
+          }
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$tauriVersion") {
+            throw "Tag ${{ github.ref_name }} does not match application version v$tauriVersion"
+          }
+
       - name: Run release checks
         run: |
           npm run typecheck
@@ -48,9 +64,18 @@ jobs:
           tagName: v__VERSION__
           releaseName: DeskTodo v__VERSION__
           releaseBody: |
-            Windows-first DeskTodo release.
+            ## 下载与安装 / Download and Install
 
-            This build is currently unsigned and may trigger a Microsoft Defender SmartScreen warning.
+            在 Assets 中下载 DeskTodo___VERSION___x64-setup.exe。不要下载 Source code.zip 作为安装程序。
+
+            Download DeskTodo___VERSION___x64-setup.exe from Assets. Do not use Source code.zip as the installer.
+
+            - 支持 64 位 Windows 10/11。
+            - 安装后可从开始菜单启动 DeskTodo。
+            - 数据保存在 %APPDATA%\com.desktodo.desktop\desktodo-state.json。
+            - 使用同一 Release 中的 SHA256SUMS.txt 校验安装包。
+
+            This installer is currently unsigned and may trigger a Microsoft Defender SmartScreen warning. Download only from the official DeskTodo GitHub Releases page and verify the SHA256 checksum before running it.
           releaseDraft: true
           prerelease: false
           args: --bundles nsis

@@ -5,11 +5,33 @@
 # DeskTodo
 
 [![CI](https://github.com/star0628/DeskTodo/actions/workflows/ci.yml/badge.svg)](https://github.com/star0628/DeskTodo/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/star0628/DeskTodo?label=Latest%20Release)](https://github.com/star0628/DeskTodo/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 DeskTodo is a Windows-first minimal desktop Todo widget. It is intentionally small: a frameless translucent desktop checklist with local persistence, tray behavior, and stable core task interactions.
 
-The current development line is v0.2.0. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
+The current release is v0.3.0. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
+
+## Download and Install
+
+> Supports 64-bit Windows 10 and Windows 11.
+
+[**Download the latest Windows installer**](https://github.com/star0628/DeskTodo/releases/latest)
+
+1. Open the download page above and select `DeskTodo_x.x.x_x64-setup.exe` under **Assets**.
+2. Do not download GitHub's generated `Source code.zip` or `Source code.tar.gz`; those archives contain source code, not the installer.
+3. Run the installer and follow the current-user installation prompts. Administrator privileges are normally not required.
+4. Start DeskTodo from the Windows Start menu after installation.
+5. The window close button sends DeskTodo to the tray. Left-click the tray icon to restore it, or use the right-click menu to show, hide, or quit.
+
+DeskTodo installers are not currently commercially code-signed, so Microsoft Defender SmartScreen may display a warning. Download only from this repository's Releases page and verify the installer against `SHA256SUMS.txt` from the same release. If Microsoft Edge WebView2 Runtime is not already installed, setup may need an internet connection to obtain it.
+
+### Upgrade, Data, and Uninstall
+
+- Upgrade: download and run the newer installer. Back up the data file before a production upgrade.
+- Data file: `%APPDATA%\com.desktodo.desktop\desktodo-state.json`.
+- Uninstall: open Windows Settings → Apps → Installed apps → DeskTodo → Uninstall.
+- Source contributors can continue with Development below; regular users do not need Node.js, Rust, or Cargo.
 
 ## Tech Stack
 
@@ -86,6 +108,7 @@ Browser development uses localStorage instead. Do not attach a real Store file t
 - Optional Windows startup launch through the official Tauri autostart plugin.
 - Add, edit, toggle, and delete parent tasks.
 - Add, edit, toggle, and delete one-level subtasks.
+- Press and hold a task row to drag-sort it while surrounding tasks move smoothly out of the way.
 - Mark unfinished parent tasks as important; important work is derived to the top without rewriting stored task order.
 - Search current and historical parent/subtask titles with Chinese, English, full-width text, and emoji matching. `Ctrl+F` opens search.
 - Repeat parent tasks every day, on workdays, or on selected weekdays, including copied one-level subtasks.
@@ -187,7 +210,6 @@ SimHei is a Windows Simplified Chinese supplemental font. The target Windows ins
 - No projects.
 - No tags.
 - No natural language date parsing.
-- No drag sorting.
 - No auto edge hide.
 - No reminder notification when a deadline arrives; deadlines are in-widget visual metadata only.
 

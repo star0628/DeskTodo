@@ -1,6 +1,6 @@
 [package]
 name = "desktop-todo"
-version = "0.2.0"
+version = "0.3.0"
 description = "DeskTodo desktop widget"
 authors = ["star0628"]
 license = "MIT"
