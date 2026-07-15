@@ -1,13 +1,17 @@
+<p align="right">
+  <strong>简体中文</strong> · <a href="./README.en.md">English</a>
+</p>
+
 # DeskTodo
 
 [![CI](https://github.com/star0628/DeskTodo/actions/workflows/ci.yml/badge.svg)](https://github.com/star0628/DeskTodo/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-DeskTodo is a Windows-first minimal desktop Todo widget. It is intentionally small: a frameless translucent desktop checklist with local persistence, tray behavior, and stable core task interactions.
+DeskTodo 是一款 Windows 优先的极简桌面 Todo 小组件。它刻意保持小巧：提供无边框半透明桌面清单、本地持久化、系统托盘行为和稳定的核心任务交互。
 
-The current development line is v0.2.0. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
+当前开发线为 v0.2.0。已通过验证的 <code>v0.1.0-personal-release</code> 标签继续冻结，作为个人发布版基线。
 
-## Tech Stack
+## 技术栈
 
 - Tauri 2
 - React
@@ -19,192 +23,192 @@ The current development line is v0.2.0. The validated `v0.1.0-personal-release` 
 - Tauri window-state
 - Tauri single-instance
 - Tauri autostart
-- Tauri dialog and file-system plugins
+- Tauri dialog 和 file-system 插件
 
-## Development
+## 开发
 
-```bash
+~~~bash
 npm ci
 npm run dev
 npm run tauri dev
-```
+~~~
 
-`npm run dev` starts the browser fallback at `http://127.0.0.1:1420/`. In browser mode, persistence falls back to localStorage because Tauri Store is unavailable.
+<code>npm run dev</code> 会在 <code>http://127.0.0.1:1420/</code> 启动浏览器回退版本。浏览器模式无法使用 Tauri Store，因此持久化会回退到 localStorage。
 
-Windows native development requires:
+Windows 原生开发环境要求：
 
-- Rust and Cargo on `PATH`
-- Microsoft C++ Build Tools with Desktop development with C++
+- <code>PATH</code> 中可用的 Rust 和 Cargo
+- 安装 Microsoft C++ Build Tools，并选择“使用 C++ 的桌面开发”
 - Microsoft Edge WebView2 Runtime
 
-## Tests
+## 测试
 
-```bash
+~~~bash
 npm run typecheck
 npm test
 npx playwright install chromium
 npm run test:ui
-```
+~~~
 
-Vitest covers domain, persistence, settings, and component behavior. Playwright visual regression tests run locally on Windows because compositor and font differences make pixel snapshots unsuitable as a cross-platform required check.
+Vitest 覆盖领域逻辑、持久化、设置和组件行为。Playwright 视觉回归测试在 Windows 本地运行，因为合成器和字体差异使像素快照不适合作为跨平台强制检查。
 
-## Build
+## 构建
 
-```bash
+~~~bash
 npm run build
 npm run tauri build
-```
+~~~
 
-`npm run tauri build` is the required native desktop validation command. A browser-only run is not enough to validate tray, close-to-tray, single-instance, Store, or window-state behavior.
+<code>npm run tauri build</code> 是必须执行的原生桌面验证命令。仅在浏览器中运行，无法验证托盘、关闭到托盘、单实例、Store 或窗口状态恢复。
 
-Unsigned Windows builds may trigger a Microsoft Defender SmartScreen warning. Release binaries should be downloaded only from this repository's GitHub Releases page and verified against the published SHA256 checksum.
+未签名的 Windows 构建可能触发 Microsoft Defender SmartScreen 警告。发布版二进制文件应仅从本仓库的 GitHub Releases 页面下载，并使用发布的 SHA256 校验值进行验证。
 
-## Privacy and Data
+## 隐私与数据
 
-DeskTodo is local-first. It has no account system, analytics, telemetry, cloud sync, or application-managed network service. In the Tauri application, task data is stored by Tauri Store at:
+DeskTodo 采用本地优先设计。它不包含账号系统、分析、遥测、云同步，也不提供由应用管理的网络服务。在 Tauri 应用中，任务数据由 Tauri Store 存储于：
 
-```text
+~~~text
 %APPDATA%\com.desktodo.desktop\desktodo-state.json
-```
+~~~
 
-Browser development uses localStorage instead. Do not attach a real Store file to a public issue because task titles may contain private information.
+浏览器开发版本改用 localStorage。请勿在公开 Issue 中附加真实 Store 文件，因为任务标题可能包含隐私信息。
 
-## Implemented
+## 已实现功能
 
-- Frameless transparent always-on-top Tauri widget window.
-- Dark translucent UI with rounded corners and a scrollable task list.
-- Deterministic app typography: Arial for Latin text and SimHei for Chinese text, with SVG icons instead of icon fonts.
-- Compact Header settings dialog with five fixed accessible palettes plus a three-color custom theme: Graphite Lime, Red Frost White, Frost Blue, Jade Forest, Ink Gold, and Custom.
-- App-native color picker with live preview, opaque HEX input, cancel/confirm behavior, and automatic readable semantic-token generation.
-- Interface font size control from 12px to 20px with synchronized slider and numeric input.
-- Background opacity control from 10% to 100% with live preview and a low-readability warning below 40%.
-- Compact density mode and a preference to collapse the completed section by default.
-- Optional Windows startup launch through the official Tauri autostart plugin.
-- Add, edit, toggle, and delete parent tasks.
-- Add, edit, toggle, and delete one-level subtasks.
-- Mark unfinished parent tasks as important; important work is derived to the top without rewriting stored task order.
-- Search current and historical parent/subtask titles with Chinese, English, full-width text, and emoji matching. `Ctrl+F` opens search.
-- Repeat parent tasks every day, on workdays, or on selected weekdays, including copied one-level subtasks.
-- Set a local deadline on a parent task through the same compact time-arrangement control used for recurrence.
-- Choose per task between a calm countdown and an explicit local deadline label such as `今天 22:00`, `明天 22:00`, or `7月16日 22:00`.
-- In countdown mode, switch to stable `MM:SS` updates only inside the final 30 minutes.
-- Carry both the local clock-time deadline pattern and its display mode into future recurring occurrences.
-- Repeating work keeps at most one unfinished occurrence and creates only the latest due occurrence after time away, avoiding backlog floods.
-- Deleting a repeating occurrence can skip only that occurrence or stop the whole series.
-- Parent subtask progress display.
-- A focused Today view containing all unfinished work plus tasks completed today.
-- Automatic removal of older completed work from the Today view without deleting history.
-- Previous-day navigation and a compact dark Chinese calendar for reviewing daily completion history.
-- Calendar completion dots with accessible per-day completion counts.
-- Fully completed work grouped in a collapsible section below active work.
-- Eight-second undo for parent-task, subtask, and confirmed historical-record deletion.
-- `Ctrl+N` focuses Quick Add on Today when no editor or calendar is active.
-- `Ctrl+Z` restores the pending deletion when focus is outside an editor.
-- A compact derived completion line under the header progress count.
-- Focus follows tasks moved between active and completed groups and returns to an item restored by undo.
-- Short compositor-friendly UI feedback that respects the Windows reduced-motion preference.
-- Historical completion lists with parent context and an explicit selection mode for confirmed cleanup.
-- Versioned UTF-8 completion-history export with an inclusive local-date range and native Save dialog.
-- Validated completion-history import with preview, duplicate/conflict skipping, and per-import undo.
-- Browser export/import fallback through Blob downloads and local file selection.
-- Local-midnight, window-focus, and visibility refresh so the Today view rolls over after sleep or tray use.
-- Pure reducer no-op handling for missing task ids.
-- Tauri Store persistence through a repository layer.
-- localStorage fallback for browser development and unit tests.
-- Safe schema parsing with fallback for missing, broken, mismatched, or nested child data.
-- Async hydration that does not auto-overwrite missing or invalid persisted data.
-- Immediate saves after real Todo state changes to avoid fast-exit data loss.
-- System tray with show, hide, and quit menu items.
-- Close-to-tray behavior.
-- Tray quit asks the frontend to flush Todo Store writes before the Rust process exits.
-- Single-instance wake-up behavior.
-- Window position and size persistence.
-- Header window controls for hide and close-to-tray.
-- Header window layer control: top, normal, and desktop/bottom modes.
-- The window is skipped from the taskbar by default and is recovered through the tray or by launching the app again.
-- Reducer, selector, and persistence tests.
+- 无边框、透明、默认置顶的 Tauri 小组件窗口。
+- 带圆角和可滚动任务列表的暗色半透明界面。
+- 确定性的应用字体策略：拉丁文字使用 Arial，中文使用 SimHei；图标采用 SVG，不依赖图标字体。
+- 紧凑的 Header 设置对话框，包含五套固定无障碍配色和一套三色自定义主题：石墨青柠、赤霞霜白、冰川蓝灰、翡翠深林、墨金和自定义。
+- 应用内原生风格调色器，支持实时预览、不透明 HEX 输入、取消/确认以及自动生成可读的语义颜色 Token。
+- 12px 至 20px 的界面字号控制，滑块和数值输入保持同步。
+- 10% 至 100% 的背景不透明度控制，支持实时预览，并在低于 40% 时显示低可读性警告。
+- 紧凑密度模式，以及默认折叠已完成区域的偏好设置。
+- 通过官方 Tauri autostart 插件选择是否随 Windows 启动。
+- 新增、编辑、切换完成状态和删除一级任务。
+- 新增、编辑、切换完成状态和删除一级子任务。
+- 将未完成的一级任务标记为重要；重要任务在派生视图中置顶，不重写存储顺序。
+- 搜索当前及历史一级任务/子任务标题，支持中文、英文、全角文本和 emoji；按 <code>Ctrl+F</code> 打开搜索。
+- 按每天、工作日或指定星期重复一级任务，并复制一级子任务。
+- 在与重复设置共用的紧凑时间安排控件中，为一级任务设置本地截止时间。
+- 每个任务可选择显示平静的倒计时，或明确的本地截止标签，例如 <code>今天 22:00</code>、<code>明天 22:00</code> 或 <code>7月16日 22:00</code>。
+- 倒计时仅在最后 30 分钟内切换为稳定的 <code>MM:SS</code> 更新。
+- 后续重复实例会继承本地时钟截止模式及其显示方式。
+- 每个重复系列最多保留一个未完成实例；长时间未打开应用后只生成最近一个到期实例，避免积压洪峰。
+- 删除重复实例时，可选择仅跳过当前实例或停止整个系列。
+- 一级任务的子任务进度显示。
+- 聚焦的“今天”视图，显示全部未完成工作和今天完成的任务。
+- 自动从“今天”视图移除更早完成的工作，但不删除历史记录。
+- 支持前一天导航，以及用于回顾每日完成历史的紧凑暗色中文日历。
+- 日历完成圆点及无障碍的每日完成数量说明。
+- 完全完成的工作归入待完成任务下方的可折叠区域。
+- 删除一级任务、子任务及确认删除历史记录后，提供 8 秒撤销。
+- 当编辑器和日历未激活时，按 <code>Ctrl+N</code> 可在“今天”视图聚焦快速新增。
+- 当焦点不在编辑器中时，按 <code>Ctrl+Z</code> 可恢复等待撤销的删除。
+- Header 进度数量下方显示紧凑的派生完成进度线。
+- 任务在待完成和已完成分组之间移动时会跟随焦点；撤销后焦点返回恢复的任务。
+- 采用适合合成器的短反馈动效，并遵循 Windows 减少动态效果偏好。
+- 历史完成列表带有一级任务上下文，并提供明确的选择模式用于确认清理。
+- 按包含首尾日期的本地日期范围，导出带版本的 UTF-8 完成历史。
+- 导入前验证完成历史并显示预览，跳过重复项和冲突项，且每次导入都可撤销。
+- 浏览器模式通过 Blob 下载和本地文件选择提供导入/导出回退。
+- 在本地午夜、窗口获得焦点和可见性变化时刷新，使“今天”视图在睡眠或托盘驻留后正确跨日。
+- 对缺失任务 ID 的 reducer 操作执行纯 no-op。
+- 通过 repository 层使用 Tauri Store 持久化。
+- 浏览器开发和单元测试使用 localStorage 回退。
+- 安全解析 schema；对数据缺失、损坏、版本不匹配或子任务非法嵌套执行回退。
+- 异步 hydration 不会自动用默认空数据覆盖缺失或无效的持久化数据。
+- Todo 状态真实变化后立即保存，避免快速退出造成数据丢失。
+- 系统托盘提供显示、隐藏和退出菜单。
+- 关闭到托盘。
+- 从托盘退出前，由 Rust 请求前端刷新 Todo Store 写入。
+- 单实例唤醒。
+- 保存并恢复窗口位置和尺寸。
+- Header 提供隐藏和关闭到托盘按钮。
+- Header 提供置顶、普通和桌面/置底窗口层级控制。
+- 默认不在任务栏中显示窗口，通过托盘或再次启动应用恢复。
+- reducer、selector 和持久化测试。
 
-## Daily History
+## 每日历史
 
-DeskTodo records both the exact completion timestamp and the local calendar date when a task or subtask is checked. The Today view is derived rather than destructively cleaned: unfinished work remains visible across days, work completed today stays visible until the local day changes, and older completed work remains available from the date navigator.
+DeskTodo 会在任务或子任务被勾选时，同时记录精确完成时间戳和本地日历日期。“今天”视图通过派生得到，而不是破坏性清理：未完成工作会跨日保留，今天完成的工作保留到本地日期变化，更早完成的工作仍可通过日期导航查看。
 
-Historical dates remain read-only during normal review. Quick Add and editing controls are available only on Today. When cleanup is required, `选择` enters a dedicated selection mode; deletion requires a second confirmation, reports any child records affected on other dates, and can be undone for eight seconds. A completed parent that still contains unfinished children is protected from historical deletion. Deadlines belong to Today tasks and do not turn historical completion views into editable schedules.
+正常回顾时，历史日期保持只读。快速新增和编辑控件仅在“今天”可用。需要清理时，点击 <code>选择</code> 进入专用选择模式；删除需要二次确认，会提示可能影响其他日期的子记录，并可在 8 秒内撤销。仍包含未完成子任务的已完成一级任务受保护，不能从历史记录中删除。截止时间属于“今天”的任务，不会把历史完成视图变成可编辑日程。
 
-The calendar is keyboard accessible, uses Monday as the first day of the week, and prevents future-date selection. A dot under a date means at least one parent task or subtask was completed on that date; its accessible day label includes the exact count. Today keeps active work above a collapsible completed section. A completed parent with an unfinished child remains in the active area so open work is never hidden.
+日历支持键盘操作，以星期一作为一周第一天，并禁止选择未来日期。日期下方的圆点表示当天至少完成了一个一级任务或子任务，其无障碍日期标签会包含精确数量。“今天”视图始终将待完成工作放在可折叠已完成区域上方。已完成一级任务若仍有未完成子任务，会留在待完成区域，避免隐藏未完成工作。
 
-State schema v8 contains live tasks, imported completion snapshots, visual settings, custom theme seeds, importance, recurrence series, optional deadlines, and each task's deadline display mode. Valid v1-v7 data is migrated in memory; the first subsequent save preserves the original state under the matching versioned backup key before writing schema v8. Existing v6 deadlines migrate to countdown mode, preserving their exact timestamp and current visual behavior. Because v0.1.0 did not store a dedicated completion timestamp, already-completed v1 tasks use their last `updatedAt` value as a best-effort historical completion time. New v0.2 completions are recorded exactly.
+状态 schema v8 包含实时任务、导入的完成快照、视觉设置、自定义主题种子、重要标记、重复系列、可选截止时间和每个任务的截止显示模式。有效的 v1-v7 数据会在内存中迁移；首次后续保存会先把原始状态保存在对应版本的备份键下，再写入 schema v8。已有 v6 截止时间会迁移为倒计时模式，保留精确时间戳和当前视觉行为。由于 v0.1.0 没有单独记录完成时间戳，已经完成的 v1 任务会以最后一次 <code>updatedAt</code> 作为尽力而为的历史完成时间；新的 v0.2 完成记录会精确保存。
 
-## Importance, Search, and Recurrence
+## 重要任务、搜索与重复
 
-Important is intentionally a parent-task flag rather than a separate priority system. In Today, unfinished important parents appear before regular unfinished parents; completed work remains in the completed section at the bottom. Stored array order is not mutated by this display rule.
+“重要”被刻意设计为一级任务标记，而不是独立的优先级系统。在“今天”视图中，未完成的重要一级任务显示在普通未完成任务之前；已完成工作仍留在底部的已完成区域。该显示规则不会修改持久化数组顺序。
 
-Search is local and read-only. It scans parent and one-level child titles in the current Store state, supports NFKC normalization and case-insensitive Latin matching, and can jump to the matching Today row or historical completion date. It does not add indexing, analytics, or cloud services.
+搜索完全在本地执行且为只读。它扫描当前 Store 状态中的一级任务和一级子任务标题，支持 NFKC 规范化以及不区分大小写的拉丁文字匹配，并可跳转到匹配的“今天”任务行或历史完成日期。它不会引入索引、分析或云服务。
 
-Repeating tasks use a small recurrence-series model rather than cloning an unlimited schedule in advance. Supported rules are daily, Monday-to-Friday workdays, and selected weekdays. DeskTodo keeps at most one unfinished occurrence per series; after the app has been closed for several occurrence dates, it creates the latest due occurrence only. A future occurrence copies the latest saved parent title, importance flag, child titles, relative deadline clock time, and deadline display mode while resetting all completion state.
+重复任务采用小型重复系列模型，不会预先无限复制日程。支持每天、周一至周五工作日和指定星期。每个系列最多保留一个未完成实例；应用关闭并跨过多个重复日期后，只创建最近一个到期实例。未来实例会复制最新保存的一级任务标题、重要标记、子任务标题、相对截止时钟时间和截止显示模式，并重置所有完成状态。
 
-Deadlines are stored as canonical ISO timestamps and edited as the user's Windows local date and time. The Time Arrangement dialog provides a per-task `倒计时 / 截止时间` choice. Countdown mode remains minute-granular outside the last 30 minutes and updates once per second below that threshold. Deadline-time mode shows `今天`, `明天`, a same-year month/day, or a full cross-year date; overdue work keeps an explicit `已逾期` marker instead of relying on color alone. DeskTodo recomputes from the system clock after focus and visibility changes instead of counting timer ticks, so sleep and tray time do not accumulate drift. Deadlines remain visual metadata only and do not send notifications or reminders.
+截止时间以规范 ISO 时间戳保存，并按用户的 Windows 本地日期和时间编辑。“时间安排”对话框为每个任务提供 <code>倒计时 / 截止时间</code> 选择。倒计时在最后 30 分钟之外保持分钟粒度，进入该区间后每秒更新。截止时间模式显示 <code>今天</code>、<code>明天</code>、同年月份/日期或跨年的完整日期；过期任务会明确显示 <code>已逾期</code>，而不是只依赖颜色。DeskTodo 在系统时钟变化、窗口聚焦和可见性变化后重新计算，不通过累计计时器 tick 推算，因此睡眠和托盘时间不会造成漂移。截止时间仅为视觉元数据，不会发送通知或提醒。
 
-## Settings
+## 设置
 
-Open the small gear button in the Header. Settings apply immediately and are persisted through the same reducer and repository path as the rest of the app state.
+点击 Header 中的小齿轮按钮打开设置。设置会立即生效，并通过与其他应用状态相同的 reducer 和 repository 路径持久化。
 
-- Theme: five fixed palettes plus Custom. The red-and-white palette is named Red Frost White (`赤霞霜白`); its stored compatibility id remains `citic-red` so existing user data does not break.
-- Custom theme: Window Canvas, Content Surface, and Accent colors accept opaque `#RRGGBB` values. Dragging previews locally; Confirm saves once through the reducer. Derived text, focus, border, and control colors are contrast-corrected automatically, while background opacity remains a separate setting.
-- Font size: 12–20px in one-pixel steps. Both the slider and numeric input update the same reducer setting.
-- Background opacity: 10–100%. Dragging previews locally; releasing or committing the field saves one validated reducer setting. Very low values can reduce readability against bright wallpaper.
-- Compact mode: reduces spacing and row height without changing task data.
-- Completed section: controls whether completed work starts collapsed in the Today view.
-- Startup launch: reads and changes the actual operating-system registration using Tauri autostart. It is disabled in browser development because no desktop registration exists there.
+- 主题：五套固定配色和自定义主题。红白配色名为赤霞霜白（Red Frost White）；为避免破坏已有用户数据，其存储兼容 ID 仍为 <code>citic-red</code>。
+- 自定义主题：窗口画布、内容表面和强调色接受不透明的 <code>#RRGGBB</code> 值。拖动只进行本地预览；确认后通过 reducer 保存一次。派生的文字、焦点、边框和控件颜色会自动进行对比度修正，背景不透明度仍作为独立设置。
+- 字号：12–20px，以 1px 为步长。滑块和数值输入更新同一个 reducer 设置。
+- 背景不透明度：10–100%。拖动时本地预览；松开或提交字段时保存一次经过验证的 reducer 设置。过低的数值可能降低亮色壁纸上的可读性。
+- 紧凑模式：在不改变任务数据的前提下减少间距和任务行高度。
+- 已完成区域：控制进入“今天”视图时已完成工作是否默认折叠。
+- 开机启动：通过 Tauri autostart 读取和修改真实操作系统注册状态。浏览器开发模式不存在桌面注册，因此该设置不可用。
 
-### Completion Record Transfer
+### 完成记录迁移
 
-The Data section exports completed parent tasks and subtasks for an inclusive local-date range. The generated `.desktodo.txt` file is pretty-printed UTF-8 JSON: it remains readable in a text editor while retaining a versioned structure suitable for strict import validation. Exact timestamps use ISO/RFC 3339 strings, while `completedOn` preserves the source device's local completion date.
+“数据”区域可以按包含首尾日期的本地日期范围，导出已完成的一级任务和子任务。生成的 <code>.desktodo.txt</code> 文件是格式化的 UTF-8 JSON：既可在文本编辑器中阅读，又保留适合严格导入验证的版本化结构。精确时间戳采用 ISO/RFC 3339 字符串，<code>completedOn</code> 保留来源设备上的本地完成日期。
 
-Import is intentionally limited to completion history. It does not recreate unfinished work, activate recurrence series, or overwrite themes and other settings. The app parses and validates the whole file before showing a preview; malformed or unsupported files leave Store data unchanged. Re-importing the same records is idempotent, and records with the same source identity but different content are reported as conflicts and skipped.
+导入被刻意限制为完成历史。它不会重建未完成工作、激活重复系列，也不会覆盖主题和其他设置。应用会在显示预览前解析并验证整个文件；格式错误或不受支持的文件不会改变 Store 数据。重复导入相同记录是幂等的；来源身份相同但内容不同的记录会被报告为冲突并跳过。
 
-DeskTodo currently records task creation time and completion time, not a true work-session start time. Exports therefore label these fields as creation and completion; they must not be interpreted as measured working duration.
+DeskTodo 当前记录任务创建时间和完成时间，而不是真实工作会话的开始时间。因此导出字段会明确标记为创建和完成，不能将其解释为测量得到的工作时长。
 
-Validate startup launch against an installed or fixed-path release executable. A development binary can move or be replaced, which makes it a poor target for a persistent Windows startup entry. DeskTodo does not start hidden; the existing single-instance behavior prevents a second window if the user launches it again manually.
+请使用安装版或固定路径的发布版可执行文件验证开机启动。开发二进制文件可能移动或被替换，不适合作为持久 Windows 启动项。DeskTodo 不会隐藏启动；用户手动再次运行时，现有单实例行为会阻止第二个窗口。
 
-## Typography
+## 字体
 
-DeskTodo-owned Latin text, numbers, and Western punctuation use the locally installed Arial family. Chinese text and CJK punctuation use the locally installed SimHei family. Form controls, dialogs, and the calendar inherit the same `DeskTodo UI` font policy. Interface icons are SVGs and do not depend on an icon font.
+DeskTodo 自有的拉丁文字、数字和西文标点使用本机安装的 Arial 字体族。中文文字和 CJK 标点使用本机安装的 SimHei 字体族。表单控件、对话框和日历继承同一套 <code>DeskTodo UI</code> 字体策略。界面图标为 SVG，不依赖图标字体。
 
-SimHei is a Windows Simplified Chinese supplemental font. The target Windows installation must have Arial and SimHei available; DeskTodo does not redistribute Microsoft font files. User-authored emoji, rare ideographs, or symbols missing from both families may use a Windows fallback font so that task content remains readable. This is the only intentional font fallback exception.
+SimHei 是 Windows 简体中文补充字体。目标 Windows 系统必须提供 Arial 和 SimHei；DeskTodo 不重新分发 Microsoft 字体文件。用户输入的 emoji、生僻字或两套字体均不包含的符号，可以使用 Windows 回退字体以保持任务内容可读。这是唯一有意保留的字体回退例外。
 
-## Known Limitations
+## 已知限制
 
-- No cloud sync.
-- No account login.
-- No notification reminders.
-- No Pomodoro.
-- No time tracking.
-- Completion-history transfer is not a full disaster-recovery backup for unfinished tasks, active recurrence, or settings.
-- No projects.
-- No tags.
-- No natural language date parsing.
-- No drag sorting.
-- No auto edge hide.
-- No reminder notification when a deadline arrives; deadlines are in-widget visual metadata only.
+- 不支持云同步。
+- 不支持账号登录。
+- 不支持通知提醒。
+- 不提供番茄钟。
+- 不提供时间追踪。
+- 完成历史迁移不是针对未完成任务、活动重复系列和设置的完整灾难恢复备份。
+- 不支持多项目。
+- 不支持标签。
+- 不支持自然语言日期解析。
+- 不支持拖拽排序。
+- 不支持自动贴边隐藏。
+- 截止时间到达时不发送提醒通知；截止时间仅为小组件内的视觉元数据。
 
-If Tauri Store fails to load, DeskTodo falls back to the default empty state and logs a warning. If a save fails, the app stays open and logs a warning; the write should be treated as failed.
+如果 Tauri Store 加载失败，DeskTodo 会回退到默认空状态并记录警告。如果保存失败，应用会保持运行并记录警告；该次写入应视为失败。
 
-In Tauri, DeskTodo persists data through Tauri Store. In browser development and tests, it uses the repository-compatible localStorage fallback. Hydration never writes the default empty state back to storage by itself; after invalid data is detected, a clean state is saved only after the user makes a real Todo change.
+在 Tauri 中，DeskTodo 通过 Tauri Store 持久化数据；浏览器开发和测试使用兼容 repository 的 localStorage 回退。Hydration 本身绝不会把默认空状态写回存储；检测到无效数据后，只有用户进行了真实 Todo 修改，才会保存干净状态。
 
-Window layer modes:
+窗口层级模式：
 
-- Top: uses Tauri `setAlwaysOnTop(true)` and keeps the widget above normal windows.
-- Normal: clears top and bottom z-order flags while keeping the widget tray-first and skipped from the taskbar.
-- Desktop: uses Tauri `setAlwaysOnBottom(true)` as a best-effort desktop sticker mode. It is not a WorkerW/Progman desktop embedding and can sit behind active windows or the Windows desktop surface. To keep the widget recoverable after Show Desktop, the tray Show action, tray left-click, and a second launch temporarily raise the native window; if the saved mode was Desktop, DeskTodo explicitly changes it to Normal and saves that change so the control, Store, and native z-order remain consistent.
+- 置顶：调用 Tauri <code>setAlwaysOnTop(true)</code>，使小组件保持在普通窗口上方。
+- 普通：清除置顶和置底 z-order 标记，同时保持托盘优先且不显示任务栏图标。
+- 桌面：调用 Tauri <code>setAlwaysOnBottom(true)</code>，作为尽力而为的桌面贴片模式。它不是 WorkerW/Progman 桌面嵌入，可能位于活动窗口或 Windows 桌面表面之后。为了确保“显示桌面”后仍可找回小组件，托盘“显示”、托盘左键单击和二次启动会暂时提升原生窗口；如果保存模式是“桌面”，DeskTodo 会明确切换为“普通”并保存该变化，使控件、Store 和原生 z-order 保持一致。
 
-Tray interaction supports left-click to show the widget. The right-click menu remains available for Show, Hide, and Quit.
+托盘支持左键单击显示小组件。右键菜单继续提供显示、隐藏和退出。
 
-Transparent windows can depend on the local Windows compositor, GPU driver, and WebView2 behavior. The code is configured for the target widget style, but a development machine with transparency limitations may render the window background differently.
+透明窗口效果可能受本地 Windows 合成器、GPU 驱动和 WebView2 行为影响。代码已按目标小组件样式配置，但透明能力受限的开发机器可能以不同方式渲染窗口背景。
 
-## Contributing
+## 参与贡献
 
-Bug reports and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before making changes. Security vulnerabilities must follow [SECURITY.md](SECURITY.md) and must not be posted as public issues.
+欢迎提交 Bug 报告和范围明确的 Pull Request。修改前请阅读[贡献指南](CONTRIBUTING.md)。安全漏洞必须按照[安全政策](SECURITY.md)报告，不得发布为公开 Issue。
 
-## License
+## 许可证
 
-DeskTodo source code is licensed under the [MIT License](LICENSE). Third-party libraries remain subject to their own licenses; direct runtime dependency notices are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+DeskTodo 源代码采用 [MIT License](LICENSE)。第三方库仍受各自许可证约束；直接运行时依赖的声明列于[第三方声明](THIRD_PARTY_NOTICES.md)。
