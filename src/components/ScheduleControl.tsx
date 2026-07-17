@@ -20,32 +20,38 @@ import {
   RecurrenceRule,
   Weekday
 } from "../domain/todoTypes";
-import { addLocalDays, localDateKeyToDate, toLocalDateKey } from "../utils/date";
+import {
+  addLocalDays,
+  formatLocalDateLabel,
+  localDateKeyToDate,
+  toLocalDateKey
+} from "../utils/date";
 import { DialogHeader } from "./DialogHeader";
 
 interface ScheduleControlProps {
+  scheduledFor: LocalDateKey | null;
   deadlineAt: string | null;
   deadlineDisplayMode: DeadlineDisplayMode;
   rule: RecurrenceRule | null;
   today: LocalDateKey;
-  baseDate: LocalDateKey;
   disabled?: boolean;
   onChange: (value: {
+    scheduledFor: LocalDateKey | null;
     deadlineAt: string | null;
     deadlineDisplayMode: DeadlineDisplayMode;
     rule: RecurrenceRule | null;
   }) => void;
 }
 
-type ScheduleTab = "deadline" | "recurrence";
+type ScheduleTab = "planned" | "deadline" | "recurrence";
 type DraftKind = "none" | RecurrenceRule["kind"];
 
 export function ScheduleControl({
+  scheduledFor,
   deadlineAt,
   deadlineDisplayMode,
   rule,
   today,
-  baseDate,
   disabled = false,
   onChange
 }: ScheduleControlProps) {
@@ -56,7 +62,12 @@ export function ScheduleControl({
   const radioName = `schedule-recurrence-kind-${instanceId}`;
   const displayModeRadioName = `schedule-deadline-display-${instanceId}`;
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<ScheduleTab>("deadline");
+  const [activeTab, setActiveTab] = useState<ScheduleTab>("planned");
+  const [draftScheduledFor, setDraftScheduledFor] =
+    useState<LocalDateKey | null>(scheduledFor);
+  const [plannedCalendarMonth, setPlannedCalendarMonth] = useState(() =>
+    localDateKeyToDate(scheduledFor ?? today)
+  );
   const [hasDeadline, setHasDeadline] = useState(deadlineAt !== null);
   const initialDeadline = getInitialDeadline(deadlineAt, today);
   const [deadlineDate, setDeadlineDate] = useState<LocalDateKey>(initialDeadline.date);
@@ -87,13 +98,24 @@ export function ScheduleControl({
   const draftDeadlineAt = hasDeadline
     ? localDeadlineToIso(deadlineDate, deadlineTime)
     : null;
-  const error = getScheduleError(draftDeadlineAt, hasDeadline, draftRule, baseDate);
-  const hasSchedule = deadlineAt !== null || rule !== null;
-  const label = getScheduleLabel(deadlineAt, rule);
+  const error = getScheduleError(
+    draftDeadlineAt,
+    hasDeadline,
+    draftRule,
+    draftScheduledFor,
+    today
+  );
+  const hasSchedule = scheduledFor !== null || deadlineAt !== null || rule !== null;
+  const label = getScheduleLabel(scheduledFor, deadlineAt, rule, today);
+  const isPlannedDateLocked = rule !== null;
 
   function openDialog() {
     const initial = getInitialDeadline(deadlineAt, today);
-    setActiveTab(deadlineAt !== null || rule === null ? "deadline" : "recurrence");
+    setActiveTab(
+      scheduledFor !== null ? "planned" : deadlineAt !== null || rule === null ? "deadline" : "recurrence"
+    );
+    setDraftScheduledFor(scheduledFor);
+    setPlannedCalendarMonth(localDateKeyToDate(scheduledFor ?? today));
     setHasDeadline(deadlineAt !== null);
     setDeadlineDate(initial.date);
     setDeadlineTime(initial.time);
@@ -118,11 +140,13 @@ export function ScheduleControl({
     const nextDeadlineAt = hasDeadline ? draftDeadlineAt : null;
     if (nextDeadlineAt === null && hasDeadline) return;
     if (
+      draftScheduledFor !== scheduledFor ||
       nextDeadlineAt !== deadlineAt ||
       draftDisplayMode !== deadlineDisplayMode ||
       !recurrenceValuesEqual(rule, draftRule)
     ) {
       onChange({
+        scheduledFor: draftScheduledFor,
         deadlineAt: nextDeadlineAt,
         deadlineDisplayMode: draftDisplayMode,
         rule: draftRule
@@ -152,9 +176,9 @@ export function ScheduleControl({
         ref={triggerRef}
         type="button"
         className={`icon-button schedule-trigger recurrence-trigger${hasSchedule ? " active" : ""}`}
-        aria-label={`设置截止时间或重复，当前${label}`}
+        aria-label={`设置计划日期、截止时间或重复，当前${label}`}
         aria-pressed={hasSchedule}
-        title={hasSchedule ? label : "设置截止时间或重复"}
+        title={hasSchedule ? label : "设置计划日期、截止时间或重复"}
         disabled={disabled}
         onClick={openDialog}
       >
@@ -177,12 +201,20 @@ export function ScheduleControl({
           <DialogHeader
             titleId={titleId}
             title="时间安排"
-            subtitle="截止时间与重复规则"
+            subtitle="计划日期、截止时间与重复规则"
             closeLabel="关闭时间安排"
             onClose={closeDialog}
           />
 
           <div className="schedule-tabs" role="tablist" aria-label="时间安排类型">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "planned"}
+              onClick={() => setActiveTab("planned")}
+            >
+              计划日期
+            </button>
             <button
               type="button"
               role="tab"
@@ -202,7 +234,85 @@ export function ScheduleControl({
           </div>
 
           <div className="schedule-content">
-            {activeTab === "deadline" ? (
+            {activeTab === "planned" ? (
+              <section className="schedule-tab-panel" role="tabpanel" aria-label="计划日期">
+                <div className="planned-date-summary">
+                  <span>当前计划</span>
+                  <strong>
+                    {draftScheduledFor
+                      ? formatLocalDateLabel(draftScheduledFor, today)
+                      : "无指定日期"}
+                  </strong>
+                </div>
+
+                {isPlannedDateLocked && (
+                  <p className="schedule-planned-note">
+                    重复任务的计划日期由重复规则生成。若要改期，请先关闭重复。
+                  </p>
+                )}
+
+                <div className="deadline-presets" aria-label="常用计划日期">
+                  <button
+                    type="button"
+                    disabled={isPlannedDateLocked}
+                    onClick={() => setDraftScheduledFor(null)}
+                  >
+                    无日期
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isPlannedDateLocked}
+                    onClick={() => {
+                      setDraftScheduledFor(today);
+                      setPlannedCalendarMonth(localDateKeyToDate(today));
+                    }}
+                  >
+                    今天
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isPlannedDateLocked}
+                    onClick={() => {
+                      const tomorrow = addLocalDays(today, 1);
+                      setDraftScheduledFor(tomorrow);
+                      setPlannedCalendarMonth(localDateKeyToDate(tomorrow));
+                    }}
+                  >
+                    明天
+                  </button>
+                </div>
+
+                <div className="schedule-calendar">
+                  <DayPicker
+                    mode="single"
+                    locale={zhCN}
+                    weekStartsOn={1}
+                    selected={
+                      draftScheduledFor ? localDateKeyToDate(draftScheduledFor) : undefined
+                    }
+                    month={plannedCalendarMonth}
+                    onMonthChange={setPlannedCalendarMonth}
+                    disabled={
+                      isPlannedDateLocked
+                        ? true
+                        : { before: localDateKeyToDate(today) }
+                    }
+                    showOutsideDays
+                    fixedWeeks
+                    formatters={{
+                      formatCaption: (date) =>
+                        `${date.getFullYear()}年${date.getMonth() + 1}月`,
+                      formatWeekdayName: (date) => "日一二三四五六"[date.getDay()]
+                    }}
+                    onSelect={(date) => {
+                      if (!date || isPlannedDateLocked) return;
+                      setDraftScheduledFor(toLocalDateKey(date));
+                      setPlannedCalendarMonth(date);
+                    }}
+                  />
+                </div>
+              </section>
+            ) : activeTab === "deadline" ? (
               <section className="schedule-tab-panel" role="tabpanel" aria-label="截止时间">
                 <label className="schedule-deadline-toggle">
                   <span>
@@ -404,13 +514,17 @@ function getScheduleError(
   deadlineAt: string | null,
   hasDeadline: boolean,
   rule: RecurrenceRule | null,
-  baseDate: LocalDateKey
+  scheduledFor: LocalDateKey | null,
+  today: LocalDateKey
 ): string | null {
+  if (scheduledFor !== null && scheduledFor < today) {
+    return "计划日期不能早于今天。";
+  }
   if (hasDeadline && deadlineAt === null) return "请选择有效的日期和时间。";
   if (rule?.kind === "weekly" && rule.weekdays.length === 0) {
     return "每周重复至少选择一天。";
   }
-  if (rule && deadlineAt && !createDeadlinePattern(deadlineAt, baseDate)) {
+  if (rule && deadlineAt && !createDeadlinePattern(deadlineAt, scheduledFor ?? today)) {
     return "重复任务的截止时间需在本次任务之后 366 天内。";
   }
   return null;
@@ -424,8 +538,16 @@ function recurrenceValuesEqual(
   return recurrenceRulesEqual(left, right);
 }
 
-function getScheduleLabel(deadlineAt: string | null, rule: RecurrenceRule | null): string {
+function getScheduleLabel(
+  scheduledFor: LocalDateKey | null,
+  deadlineAt: string | null,
+  rule: RecurrenceRule | null,
+  today: LocalDateKey
+): string {
   const parts: string[] = [];
+  if (scheduledFor) {
+    parts.push(`计划 ${formatLocalDateLabel(scheduledFor, today)}`);
+  }
   if (deadlineAt) {
     const display = getDeadlineDisplay(deadlineAt, Date.now(), false);
     if (display) parts.push(`截止 ${display.dateLabel}`);

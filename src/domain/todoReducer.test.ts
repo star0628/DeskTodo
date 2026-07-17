@@ -4,7 +4,7 @@ import { todoReducer } from "./todoReducer";
 
 function stateWithTasks(tasks: TodoItem[] = []): AppState {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     tasks,
     archivedCompletions: [],
     recurrenceSeries: [],
@@ -67,6 +67,43 @@ describe("todoReducer", () => {
 
     expect(next).toBe(initial);
     expect(next.tasks).toHaveLength(0);
+  });
+
+  it("addTask: creates a trimmed task on a valid future date", () => {
+    const next = todoReducer(stateWithTasks(), {
+      type: "addTask",
+      title: "  Future plan  ",
+      scheduledFor: "2026-07-20",
+      today: "2026-07-17"
+    });
+
+    expect(next.tasks[0]).toMatchObject({
+      title: "Future plan",
+      scheduledFor: "2026-07-20",
+      recurrenceSeriesId: null,
+      children: []
+    });
+  });
+
+  it("addTask: rejects malformed or past planned dates", () => {
+    const initial = stateWithTasks();
+
+    expect(
+      todoReducer(initial, {
+        type: "addTask",
+        title: "Past",
+        scheduledFor: "2026-07-16",
+        today: "2026-07-17"
+      })
+    ).toBe(initial);
+    expect(
+      todoReducer(initial, {
+        type: "addTask",
+        title: "Malformed",
+        scheduledFor: "2026-02-30",
+        today: "2026-07-17"
+      })
+    ).toBe(initial);
   });
 
   it("editTask: normally edits a task", () => {
@@ -668,6 +705,70 @@ describe("todoReducer", () => {
     expect(cleared.tasks[0].deadlineAt).toBeNull();
   });
 
+  it("setTaskSchedule: sets, changes, clears, and no-ops a standalone planned date", () => {
+    const initial = stateWithTasks([task()]);
+    const planned = todoReducer(initial, {
+      type: "setTaskSchedule",
+      id: "task-1",
+      scheduledFor: "2026-07-20",
+      deadlineAt: null,
+      deadlineDisplayMode: "countdown",
+      rule: null,
+      today: "2026-07-17"
+    });
+
+    expect(planned.tasks[0].scheduledFor).toBe("2026-07-20");
+    expect(
+      todoReducer(planned, {
+        type: "setTaskSchedule",
+        id: "task-1",
+        scheduledFor: "2026-07-20",
+        deadlineAt: null,
+        deadlineDisplayMode: "countdown",
+        rule: null,
+        today: "2026-07-17"
+      })
+    ).toBe(planned);
+
+    const changed = todoReducer(planned, {
+      type: "setTaskSchedule",
+      id: "task-1",
+      scheduledFor: "2026-07-21",
+      deadlineAt: null,
+      deadlineDisplayMode: "countdown",
+      rule: null,
+      today: "2026-07-17"
+    });
+    expect(changed.tasks[0].scheduledFor).toBe("2026-07-21");
+
+    const cleared = todoReducer(changed, {
+      type: "setTaskSchedule",
+      id: "task-1",
+      scheduledFor: null,
+      deadlineAt: null,
+      deadlineDisplayMode: "countdown",
+      rule: null,
+      today: "2026-07-17"
+    });
+    expect(cleared.tasks[0].scheduledFor).toBeNull();
+  });
+
+  it("setTaskSchedule: rejects moving a standalone task into the past", () => {
+    const initial = stateWithTasks([task({ scheduledFor: "2026-07-20" })]);
+
+    expect(
+      todoReducer(initial, {
+        type: "setTaskSchedule",
+        id: "task-1",
+        scheduledFor: "2026-07-16",
+        deadlineAt: null,
+        deadlineDisplayMode: "countdown",
+        rule: null,
+        today: "2026-07-17"
+      })
+    ).toBe(initial);
+  });
+
   it("setTaskSchedule: rejects missing tasks, malformed instants, and invalid recurring offsets", () => {
     const initial = stateWithTasks([task()]);
 
@@ -752,6 +853,51 @@ describe("todoReducer", () => {
       localTime: "09:30"
     });
     expect(scheduled.recurrenceSeries[0].template.deadlineDisplayMode).toBe("dateTime");
+  });
+
+  it("setTaskSchedule: starts a new recurring series from its future planned date", () => {
+    const scheduled = todoReducer(stateWithTasks([task()]), {
+      type: "setTaskSchedule",
+      id: "task-1",
+      scheduledFor: "2026-07-20",
+      deadlineAt: null,
+      deadlineDisplayMode: "countdown",
+      rule: { kind: "daily" },
+      today: "2026-07-17"
+    });
+
+    expect(scheduled.tasks[0].scheduledFor).toBe("2026-07-20");
+    expect(scheduled.recurrenceSeries[0]).toMatchObject({
+      nextOccurrenceOn: "2026-07-21",
+      activeTaskId: "task-1"
+    });
+  });
+
+  it("early recurring completion keeps the next occurrence after the planned date", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 18, 9, 0));
+    const scheduled = todoReducer(stateWithTasks([task()]), {
+      type: "setTaskSchedule",
+      id: "task-1",
+      scheduledFor: "2026-07-20",
+      deadlineAt: null,
+      deadlineDisplayMode: "countdown",
+      rule: { kind: "daily" },
+      today: "2026-07-17"
+    });
+
+    const completed = todoReducer(scheduled, { type: "toggleTask", id: "task-1" });
+
+    expect(completed.tasks[0]).toMatchObject({
+      done: true,
+      completedOn: "2026-07-18",
+      scheduledFor: "2026-07-20"
+    });
+    expect(completed.recurrenceSeries[0]).toMatchObject({
+      activeTaskId: null,
+      nextOccurrenceOn: "2026-07-21"
+    });
+    vi.useRealTimers();
   });
 
   it("importCompletionRecords: appends snapshots and rejects duplicate source refs", () => {

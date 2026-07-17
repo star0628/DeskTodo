@@ -3,6 +3,10 @@ import { fallbackDefaultState } from "../persistence/appStateSchema";
 import {
   getCompletedEntriesForDate,
   getCompletionCountByDate,
+  getDateViewMode,
+  getFutureProgress,
+  getFutureTaskGroups,
+  getScheduledCountByDate,
   getTodayProgress,
   getTodayTaskGroups,
   getTodayTasks,
@@ -38,6 +42,12 @@ function state(tasks: TodoItem[]): AppState {
 }
 
 describe("dailyViewSelectors", () => {
+  it("classifies past, today, and future date views", () => {
+    expect(getDateViewMode("2026-07-12", "2026-07-13")).toBe("past");
+    expect(getDateViewMode("2026-07-13", "2026-07-13")).toBe("today");
+    expect(getDateViewMode("2026-07-14", "2026-07-13")).toBe("future");
+  });
+
   it("today contains all open work and tasks completed today", () => {
     const appState = state([
       task("open-old", null),
@@ -94,6 +104,69 @@ describe("dailyViewSelectors", () => {
     expect(getTodayProgress(state([future]), "2026-07-13")).toEqual({ done: 0, total: 0 });
     expect(getTodayTasks(state([future]), "2026-07-14").map((item) => item.id)).toEqual([
       "future"
+    ]);
+  });
+
+  it("shows standalone future work only on its exact planned date", () => {
+    const planned = {
+      ...task("future", null, [task("child", null)]),
+      scheduledFor: "2026-07-20"
+    };
+    const appState = state([planned, task("backlog", null)]);
+
+    expect(getFutureTaskGroups(appState, "2026-07-19").activeTasks).toEqual([]);
+    expect(
+      getFutureTaskGroups(appState, "2026-07-20").activeTasks.map((item) => item.id)
+    ).toEqual(["future"]);
+    expect(getFutureProgress(appState, "2026-07-20")).toEqual({ done: 0, total: 2 });
+  });
+
+  it("carries an unfinished planned task into today after its date passes", () => {
+    const overdue = {
+      ...task("overdue", null),
+      scheduledFor: "2026-07-12"
+    };
+
+    expect(getTodayTasks(state([overdue]), "2026-07-13").map((item) => item.id)).toEqual([
+      "overdue"
+    ]);
+    expect(getTodayProgress(state([overdue]), "2026-07-13")).toEqual({
+      done: 0,
+      total: 1
+    });
+  });
+
+  it("keeps an early completion visible on both its actual and planned dates", () => {
+    const completedEarly = {
+      ...task("early", "2026-07-18"),
+      scheduledFor: "2026-07-20"
+    };
+    const appState = state([completedEarly]);
+
+    expect(getTodayTaskGroups(appState, "2026-07-18").completedTasks[0].id).toBe("early");
+    expect(getFutureTaskGroups(appState, "2026-07-20").completedTasks[0].id).toBe("early");
+    expect(getFutureProgress(appState, "2026-07-20")).toEqual({ done: 1, total: 1 });
+  });
+
+  it("counts parent and inherited child work on future calendar dates", () => {
+    const appState = state([
+      {
+        ...task("future", null, [task("child", null)]),
+        scheduledFor: "2026-07-20"
+      },
+      {
+        ...task("later", null),
+        scheduledFor: "2026-07-21"
+      },
+      {
+        ...task("overdue", null),
+        scheduledFor: "2026-07-12"
+      }
+    ]);
+
+    expect(Array.from(getScheduledCountByDate(appState, "2026-07-13").entries())).toEqual([
+      ["2026-07-20", 2],
+      ["2026-07-21", 1]
     ]);
   });
 

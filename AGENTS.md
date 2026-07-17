@@ -10,6 +10,9 @@
 - Invalid or unreadable persisted data must not be overwritten until a real user Todo mutation occurs.
 - Completed tasks must be hidden through daily selectors, never automatically deleted from persisted state.
 - Daily history is keyed by the stored local completion date; do not derive it by slicing a UTC ISO timestamp.
+- Keep date-view semantics explicit: past dates are actual completion history, today includes backlog and due work, and future dates show tasks whose parent `scheduledFor` exactly matches that date.
+- Standalone planned dates belong only to parent tasks. Children inherit the parent date and must keep `scheduledFor: null`.
+- Planned date and exact deadline are independent fields; changing one must not silently move the other.
 - Date navigation is ephemeral UI state and must not be persisted or trigger saves.
 - Calendar completion markers and completed-section grouping must remain selector-derived.
 - Important-task ordering must remain selector-derived; do not reorder or mutate persisted task arrays to pin important work.

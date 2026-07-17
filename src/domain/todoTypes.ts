@@ -104,7 +104,7 @@ export interface AppSettings {
 }
 
 export interface AppState {
-  schemaVersion: 8;
+  schemaVersion: 9;
   tasks: TodoItem[];
   archivedCompletions: ArchivedCompletionRecord[];
   recurrenceSeries: RecurrenceSeries[];

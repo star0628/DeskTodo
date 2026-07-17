@@ -11,6 +11,7 @@ import {
   TodoId,
   TodoItem as TodoItemType
 } from "../domain/todoTypes";
+import { formatLocalDateLabel } from "../utils/date";
 import { scheduleTodoFocus } from "../utils/focus";
 import { DeadlineMeta } from "./DeadlineMeta";
 import { RecurringDeleteDialog } from "./RecurringDeleteDialog";
@@ -109,16 +110,19 @@ export function TaskItem({
               <Star aria-hidden="true" fill={task.important ? "currentColor" : "none"} />
             </button>
             <ScheduleControl
+              scheduledFor={task.scheduledFor}
               deadlineAt={task.deadlineAt}
               deadlineDisplayMode={task.deadlineDisplayMode}
               rule={recurrenceRule ?? null}
               today={today}
-              baseDate={task.scheduledFor ?? today}
-              disabled={task.done && !task.deadlineAt && !recurrenceRule}
-              onChange={({ deadlineAt, deadlineDisplayMode, rule }) =>
+              disabled={
+                task.done && !task.scheduledFor && !task.deadlineAt && !recurrenceRule
+              }
+              onChange={({ scheduledFor, deadlineAt, deadlineDisplayMode, rule }) =>
                 dispatch({
                   type: "setTaskSchedule",
                   id: task.id,
+                  scheduledFor,
                   deadlineAt,
                   deadlineDisplayMode,
                   rule,
@@ -153,6 +157,7 @@ export function TaskItem({
         }
         onToggle={() => dispatch({ type: "toggleTask", id: task.id })}
         onEdit={(title) => dispatch({ type: "editTask", id: task.id, title })}
+        today={today}
         nowMs={nowMs}
         dragActivatorRef={sortable.setActivatorNodeRef}
         dragListeners={sortable.listeners}
@@ -247,6 +252,7 @@ interface TaskRowProps {
   onToggle: () => void;
   onEdit: (title: string) => void;
   subtaskProgress?: { done: number; total: number };
+  today?: LocalDateKey;
   nowMs?: number;
   sortableRef?: (element: HTMLElement | null) => void;
   sortableStyle?: React.CSSProperties;
@@ -262,6 +268,7 @@ function TaskRow({
   onToggle,
   onEdit,
   subtaskProgress,
+  today,
   nowMs,
   sortableRef,
   sortableStyle,
@@ -272,6 +279,14 @@ function TaskRow({
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(task.title);
   const isCommittingRef = useRef(false);
+  const overduePlannedDate =
+    level === "parent" &&
+    today !== undefined &&
+    task.scheduledFor !== null &&
+    task.scheduledFor < today &&
+    !task.done
+      ? task.scheduledFor
+      : null;
   const setSortableRowRef = useCallback(
     (element: HTMLElement | null) => {
       sortableRef?.(element);
@@ -365,8 +380,14 @@ function TaskRow({
         </div>
         {level === "parent" &&
           ((task.deadlineAt && nowMs !== undefined) ||
-            (subtaskProgress && subtaskProgress.total > 0)) && (
+            (subtaskProgress && subtaskProgress.total > 0) ||
+            overduePlannedDate !== null) && (
             <div className="task-meta-row">
+              {overduePlannedDate && today && (
+                <span className="scheduled-date-meta">
+                  原计划 {formatLocalDateLabel(overduePlannedDate, today)}
+                </span>
+              )}
               {task.deadlineAt && nowMs !== undefined && (
                 <DeadlineMeta
                   deadlineAt={task.deadlineAt}

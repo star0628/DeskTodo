@@ -114,7 +114,7 @@ test.describe("DeskTodo phase 5 to 7 visual baseline", () => {
 
   test("search overlay", async ({ page }) => {
     await openVisualApp(page, createVisualState("history"));
-    await page.getByRole("button", { name: "搜索历史任务" }).click();
+    await page.getByRole("button", { name: "搜索任务" }).click();
     await expect(page.getByRole("dialog", { name: "搜索任务" })).toBeVisible();
     await page.getByRole("searchbox", { name: "搜索任务和子任务" }).fill("项目");
     await settleVisualState(page);
@@ -188,7 +188,7 @@ test.describe("DeskTodo phase 5 to 7 visual baseline", () => {
   test("recurrence overlay", async ({ page }) => {
     await openVisualApp(page, createVisualState("standard"));
     await taskCard(page, "回复客户关于交付时间的邮件")
-      .getByRole("button", { name: /设置截止时间或重复/ })
+      .getByRole("button", { name: /设置计划日期、截止时间或重复/ })
       .click();
     await expect(page.getByRole("dialog", { name: "时间安排" })).toBeVisible();
     await expect(page.getByRole("radio", { name: "截止时间" })).toBeChecked();

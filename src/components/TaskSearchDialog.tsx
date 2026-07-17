@@ -42,7 +42,7 @@ export function TaskSearchDialog({
   }, [open]);
 
   function navigate(result: TaskSearchResult) {
-    const date = result.completedOn ?? today;
+    const date = result.completedOn ?? result.scheduledFor ?? today;
     onNavigate(date, result.status === "completed" ? result.id : result.taskId);
     onClose();
   }

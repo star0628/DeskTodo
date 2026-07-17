@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addLocalDays,
+  formatLocalDateLabel,
   isLocalDateKey,
   localDateKeyToDate,
   localDateKeyFromIso,
@@ -28,6 +29,13 @@ describe("date utilities", () => {
   it("moves across month and year boundaries", () => {
     expect(addLocalDays("2026-12-31", 1)).toBe("2027-01-01");
     expect(addLocalDays("2028-03-01", -1)).toBe("2028-02-29");
+  });
+
+  it("uses concise Chinese labels for today and the next two days", () => {
+    expect(formatLocalDateLabel("2026-07-13", "2026-07-13")).toBe("今天 7月13日");
+    expect(formatLocalDateLabel("2026-07-14", "2026-07-13")).toBe("明天 7月14日");
+    expect(formatLocalDateLabel("2026-07-15", "2026-07-13")).toBe("后天 7月15日");
+    expect(formatLocalDateLabel("2026-07-16", "2026-07-13")).toMatch(/^7月16日 周/);
   });
 
   it("converts date keys without UTC offset drift", () => {

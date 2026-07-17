@@ -26,8 +26,12 @@ import { getParentSubtaskProgress } from "./domain/todoSelectors";
 import {
   getCompletedEntriesForDate,
   getCompletionCountByDate,
+  getDateViewMode,
+  getFutureProgress,
+  getFutureTaskGroups,
+  getScheduledCountByDate,
   getTodayTaskGroups,
-  getTodayProgress,
+  getTodayProgress
 } from "./domain/dailyViewSelectors";
 import {
   AppState,
@@ -40,6 +44,7 @@ import { applyWindowLayerMode } from "./persistence/windowLayer";
 import { getRecoveredWindowLayerMode } from "./persistence/windowRecovery";
 import { LoadStatus } from "./persistence/appStateRepository";
 import { useLocalDay } from "./hooks/useLocalDay";
+import { formatLocalDateLabel } from "./utils/date";
 import { scheduleTodoFocus, scheduleTodoReveal } from "./utils/focus";
 import { shouldFocusQuickAdd, shouldUndoDelete } from "./utils/keyboard";
 
@@ -111,7 +116,7 @@ function App() {
 
   useEffect(() => {
     const previousToday = previousTodayRef.current;
-    setSelectedDate((current) => (current === previousToday || current > today ? today : current));
+    setSelectedDate((current) => (current === previousToday ? today : current));
     previousTodayRef.current = today;
   }, [today]);
 
@@ -201,7 +206,9 @@ function App() {
     };
   }, [dispatchTodoAction]);
 
-  const isToday = selectedDate === today;
+  const dateViewMode = getDateViewMode(selectedDate, today);
+  const isToday = dateViewMode === "today";
+  const isEditableTaskDate = dateViewMode !== "past";
 
   useEffect(() => {
     if (!hasHydrated) return;
@@ -210,11 +217,25 @@ function App() {
 
   const todayTaskGroups = useMemo(() => getTodayTaskGroups(state, today), [state, today]);
   const todayProgress = useMemo(() => getTodayProgress(state, today), [state, today]);
+  const futureTaskGroups = useMemo(
+    () => getFutureTaskGroups(state, selectedDate),
+    [selectedDate, state]
+  );
+  const futureProgress = useMemo(
+    () => getFutureProgress(state, selectedDate),
+    [selectedDate, state]
+  );
   const historyEntries = useMemo(
     () => getCompletedEntriesForDate(state, selectedDate),
     [selectedDate, state]
   );
   const completionCounts = useMemo(() => getCompletionCountByDate(state), [state]);
+  const scheduledCounts = useMemo(
+    () => getScheduledCountByDate(state, today),
+    [state, today]
+  );
+  const selectedTaskGroups = isToday ? todayTaskGroups : futureTaskGroups;
+  const selectedProgress = isToday ? todayProgress : futureProgress;
   const progressByTaskId = useMemo(
     () => new Map(state.tasks.map((task) => [task.id, getParentSubtaskProgress(task)])),
     [state.tasks]
@@ -228,12 +249,18 @@ function App() {
       ),
     [state.recurrenceSeries]
   );
-  const progressLabel = isToday
-    ? `${todayProgress.done} / ${todayProgress.total} done`
-    : `${historyEntries.length} done`;
-  const progressRatio = isToday
-    ? todayProgress.total === 0 ? 0 : todayProgress.done / todayProgress.total
-    : historyEntries.length > 0 ? 1 : 0;
+  const progressLabel =
+    dateViewMode === "past"
+      ? `${historyEntries.length} done`
+      : `${selectedProgress.done} / ${selectedProgress.total} done`;
+  const progressRatio =
+    dateViewMode === "past"
+      ? historyEntries.length > 0
+        ? 1
+        : 0
+      : selectedProgress.total === 0
+        ? 0
+        : selectedProgress.done / selectedProgress.total;
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
@@ -250,7 +277,7 @@ function App() {
       if (
         shouldFocusQuickAdd(
           event,
-          hasHydrated && isToday,
+          hasHydrated && isEditableTaskDate,
           document.querySelector("dialog[open]") !== null
         )
       ) {
@@ -261,7 +288,7 @@ function App() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [hasHydrated, isToday]);
+  }, [hasHydrated, isEditableTaskDate]);
 
   useEffect(() => {
     if (!pendingSearchTarget) return;
@@ -381,6 +408,7 @@ function App() {
         selectedDate={selectedDate}
         today={today}
         completionCounts={completionCounts}
+        scheduledCounts={scheduledCounts}
         onChange={setSelectedDate}
         onOpenSearch={() => setIsSearchOpen(true)}
         searchTriggerRef={searchTriggerRef}
@@ -390,18 +418,40 @@ function App() {
           正在加载…
         </section>
       ) : (
-        isToday ? (
+        isEditableTaskDate ? (
           <>
             <QuickAddInput
+              key={`quick-add-${selectedDate}`}
               ref={quickAddInputRef}
-              onAdd={(title) => dispatchTodoAction({ type: "addTask", title })}
+              placeholder={
+                isToday
+                  ? "在此添加任务，Enter 创建"
+                  : `为${formatLocalDateLabel(selectedDate, today)}添加任务，Enter 创建`
+              }
+              onAdd={(title) =>
+                dispatchTodoAction({
+                  type: "addTask",
+                  title,
+                  scheduledFor: isToday ? null : selectedDate,
+                  today
+                })
+              }
             />
-            {todayTaskGroups.activeTasks.length + todayTaskGroups.completedTasks.length === 0 ? (
-              <EmptyState />
+            {selectedTaskGroups.activeTasks.length +
+                selectedTaskGroups.completedTasks.length ===
+              0 ? (
+              <EmptyState
+                message={
+                  isToday
+                    ? undefined
+                    : "这一天还没有计划。先安排一件要做的事。"
+                }
+              />
             ) : (
               <TaskList
-                activeTasks={todayTaskGroups.activeTasks}
-                completedTasks={todayTaskGroups.completedTasks}
+                key={`task-list-${selectedDate}`}
+                activeTasks={selectedTaskGroups.activeTasks}
+                completedTasks={selectedTaskGroups.completedTasks}
                 today={today}
                 recurrenceById={recurrenceById}
                 dispatch={dispatchTodoAction}

@@ -2,10 +2,11 @@ import { forwardRef, KeyboardEvent, useRef, useState } from "react";
 
 interface QuickAddInputProps {
   onAdd: (title: string) => void;
+  placeholder?: string;
 }
 
 export const QuickAddInput = forwardRef<HTMLInputElement, QuickAddInputProps>(function QuickAddInput(
-  { onAdd },
+  { onAdd, placeholder = "在此添加任务，Enter 创建" },
   ref
 ) {
   const [value, setValue] = useState("");
@@ -38,7 +39,7 @@ export const QuickAddInput = forwardRef<HTMLInputElement, QuickAddInputProps>(fu
         onCompositionEnd={() => {
           isComposingRef.current = false;
         }}
-        placeholder="在此添加任务，Enter 创建"
+        placeholder={placeholder}
         aria-label="添加任务"
       />
     </div>

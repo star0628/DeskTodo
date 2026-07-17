@@ -25,6 +25,17 @@ export interface TodayTaskGroups {
   completedTasks: TodoItem[];
 }
 
+export type DateViewMode = "past" | "today" | "future";
+
+export function getDateViewMode(
+  selectedDate: LocalDateKey,
+  today: LocalDateKey
+): DateViewMode {
+  if (selectedDate < today) return "past";
+  if (selectedDate > today) return "future";
+  return "today";
+}
+
 export function getTodayTasks(state: AppState, today: LocalDateKey): TodoItem[] {
   const groups = getTodayTaskGroups(state, today);
   return [...groups.activeTasks, ...groups.completedTasks];
@@ -32,14 +43,34 @@ export function getTodayTasks(state: AppState, today: LocalDateKey): TodoItem[] 
 
 export function getTodayTaskGroups(state: AppState, today: LocalDateKey): TodayTaskGroups {
   const visibleTasks = state.tasks.flatMap((task) => {
-    if (!isAvailableByDate(task, today)) return [];
-    const visibleChildren = task.children.filter((child) => isVisibleToday(child, today));
+    const parentAvailable = isAvailableByDate(task, today);
+    const visibleChildren = task.children.filter((child) =>
+      isVisibleToday(child, today, parentAvailable)
+    );
     const children = groupOpenTasksFirst(visibleChildren);
-    if (!isVisibleToday(task, today) && children.length === 0) return [];
+    if (!isVisibleToday(task, today, parentAvailable) && children.length === 0) return [];
 
     return hasSameOrder(children, task.children) ? [task] : [{ ...task, children }];
   });
 
+  const activeTasks = groupOpenTasksFirst(
+    visibleTasks.filter((task) => !task.done || task.children.some((child) => !child.done))
+  );
+  const completedTasks = visibleTasks.filter(
+    (task) => task.done && task.children.every((child) => child.done)
+  );
+  return { activeTasks, completedTasks };
+}
+
+export function getFutureTaskGroups(
+  state: AppState,
+  date: LocalDateKey
+): TodayTaskGroups {
+  const visibleTasks = state.tasks.flatMap((task) => {
+    if (task.scheduledFor !== date) return [];
+    const children = groupOpenTasksFirst(task.children);
+    return hasSameOrder(children, task.children) ? [task] : [{ ...task, children }];
+  });
   const activeTasks = groupOpenTasksFirst(
     visibleTasks.filter((task) => !task.done || task.children.some((child) => !child.done))
   );
@@ -61,17 +92,34 @@ export function getTodayProgress(state: AppState, today: LocalDateKey): DailyPro
   let total = 0;
 
   for (const task of state.tasks) {
-    if (!isAvailableByDate(task, today)) continue;
-    if (isVisibleToday(task, today)) {
+    const parentAvailable = isAvailableByDate(task, today);
+    if (isVisibleToday(task, today, parentAvailable)) {
       total += 1;
       if (task.done) done += 1;
     }
 
     for (const child of task.children) {
-      if (isVisibleToday(child, today)) {
+      if (isVisibleToday(child, today, parentAvailable)) {
         total += 1;
         if (child.done) done += 1;
       }
+    }
+  }
+
+  return { done, total };
+}
+
+export function getFutureProgress(state: AppState, date: LocalDateKey): DailyProgress {
+  let done = 0;
+  let total = 0;
+
+  for (const task of state.tasks) {
+    if (task.scheduledFor !== date) continue;
+    total += 1;
+    if (task.done) done += 1;
+    for (const child of task.children) {
+      total += 1;
+      if (child.done) done += 1;
     }
   }
 
@@ -155,13 +203,32 @@ export function getCompletionCountByDate(state: AppState): Map<LocalDateKey, num
   return counts;
 }
 
+export function getScheduledCountByDate(
+  state: AppState,
+  today: LocalDateKey
+): Map<LocalDateKey, number> {
+  const counts = new Map<LocalDateKey, number>();
+
+  for (const task of state.tasks) {
+    if (!task.scheduledFor || task.scheduledFor < today) continue;
+    const count = 1 + task.children.length;
+    counts.set(task.scheduledFor, (counts.get(task.scheduledFor) ?? 0) + count);
+  }
+
+  return counts;
+}
+
 function addCompletionCount(counts: Map<LocalDateKey, number>, task: TodoItem): void {
   if (!task.done || !task.completedOn) return;
   counts.set(task.completedOn, (counts.get(task.completedOn) ?? 0) + 1);
 }
 
-function isVisibleToday(task: TodoItem, today: LocalDateKey): boolean {
-  return isAvailableByDate(task, today) && (!task.done || task.completedOn === today);
+function isVisibleToday(
+  task: TodoItem,
+  today: LocalDateKey,
+  parentAvailable: boolean
+): boolean {
+  return task.done ? task.completedOn === today : parentAvailable;
 }
 
 function isAvailableByDate(task: TodoItem, today: LocalDateKey): boolean {
