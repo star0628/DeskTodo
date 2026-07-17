@@ -73,6 +73,34 @@ describe("TaskSearchDialog", () => {
     expect(screen.queryByText("工作复盘")).not.toBeInTheDocument();
   });
 
+  it("navigates unfinished scheduled work to its planned future date", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    render(
+      <TaskSearchDialog
+        open
+        state={{
+          ...fallbackDefaultState(),
+          tasks: [
+            task(false, {
+              id: "future-task",
+              title: "未来计划",
+              scheduledFor: "2026-07-20"
+            })
+          ]
+        }}
+        today="2026-07-13"
+        onNavigate={onNavigate}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.type(await screen.findByRole("searchbox"), "未来");
+    await user.click(screen.getByRole("button", { name: /未来计划/ }));
+
+    expect(onNavigate).toHaveBeenCalledWith("2026-07-20", "future-task");
+  });
+
   it("uses the shared sheet surface and restores its trigger after closing", async () => {
     const user = userEvent.setup();
     const trigger = document.createElement("button");

@@ -8,17 +8,20 @@ interface DateNavigatorProps {
   selectedDate: LocalDateKey;
   today: LocalDateKey;
   completionCounts?: ReadonlyMap<LocalDateKey, number>;
+  scheduledCounts?: ReadonlyMap<LocalDateKey, number>;
   onChange: (date: LocalDateKey) => void;
   onOpenSearch?: () => void;
   searchTriggerRef?: Ref<HTMLButtonElement>;
 }
 
 const EMPTY_COMPLETION_COUNTS = new Map<LocalDateKey, number>();
+const EMPTY_SCHEDULED_COUNTS = new Map<LocalDateKey, number>();
 
 export function DateNavigator({
   selectedDate,
   today,
   completionCounts = EMPTY_COMPLETION_COUNTS,
+  scheduledCounts = EMPTY_SCHEDULED_COUNTS,
   onChange,
   onOpenSearch,
   searchTriggerRef
@@ -66,7 +69,6 @@ export function DateNavigator({
           type="button"
           className="date-arrow date-arrow-next"
           onClick={() => onChange(addLocalDays(selectedDate, 1))}
-          disabled={isToday}
           aria-label="后一天"
           title="后一天"
         >
@@ -89,7 +91,7 @@ export function DateNavigator({
             type="button"
             className="date-search-button"
             onClick={onOpenSearch}
-            aria-label="搜索历史任务"
+            aria-label="搜索任务"
             title="搜索任务"
           >
             <Search aria-hidden="true" />
@@ -102,6 +104,7 @@ export function DateNavigator({
         selectedDate={selectedDate}
         today={today}
         completionCounts={completionCounts}
+        scheduledCounts={scheduledCounts}
         onSelect={onChange}
         onClose={closeCalendar}
       />

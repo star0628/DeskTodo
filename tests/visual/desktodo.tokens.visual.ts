@@ -133,7 +133,7 @@ test.describe("DeskTodo phase 5 to 7 token integration", () => {
       };
     });
     expect(motion).toEqual({ fast: "0ms", normal: "0ms" });
-    await expect(page.getByRole("button", { name: "搜索历史任务" })).toHaveCSS(
+    await expect(page.getByRole("button", { name: "搜索任务" })).toHaveCSS(
       "transition-duration",
       "0s, 0s, 0s, 0s, 0s"
     );

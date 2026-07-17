@@ -73,12 +73,14 @@ describe("DateNavigator", () => {
     expect(trigger).toHaveFocus();
   });
 
-  it("disables future dates", async () => {
+  it("selects a future date from the calendar", async () => {
     const user = userEvent.setup();
-    renderNavigator();
+    const onChange = vi.fn();
+    renderNavigator(onChange);
     await user.click(screen.getByRole("button", { name: /选择日期/ }));
+    await user.click(screen.getByRole("button", { name: /7月14日/ }));
 
-    expect(screen.getByRole("button", { name: /7月14日/ })).toBeDisabled();
+    expect(onChange).toHaveBeenCalledWith("2026-07-14");
   });
 
   it("adds completion counts to day labels", async () => {
@@ -97,11 +99,31 @@ describe("DateNavigator", () => {
     expect(screen.getByRole("button", { name: /7月12日.*完成3项/ })).toBeInTheDocument();
   });
 
-  it("keeps previous and next navigation bounded by today", () => {
-    renderNavigator();
+  it("adds scheduled counts to future day labels", async () => {
+    const user = userEvent.setup();
+    render(
+      <DateNavigator
+        selectedDate="2026-07-13"
+        today="2026-07-13"
+        scheduledCounts={new Map([["2026-07-14", 2]])}
+        onChange={() => undefined}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /选择日期/ }));
+
+    expect(screen.getByRole("button", { name: /7月14日.*计划2项/ })).toBeInTheDocument();
+  });
+
+  it("allows previous and next navigation across today", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderNavigator(onChange);
 
     expect(screen.getByRole("button", { name: "前一天" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "后一天" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "后一天" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "后一天" }));
+    expect(onChange).toHaveBeenCalledWith("2026-07-14");
   });
 
   it("opens global task search from its compact action", async () => {
@@ -116,7 +138,7 @@ describe("DateNavigator", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "搜索历史任务" }));
+    await user.click(screen.getByRole("button", { name: "搜索任务" }));
     expect(onOpenSearch).toHaveBeenCalledOnce();
   });
 

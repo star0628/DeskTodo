@@ -34,11 +34,11 @@ describe("ScheduleControl", () => {
 
     rerender(
       <ScheduleControl
+        scheduledFor="2026-07-14"
         deadlineAt={localDeadlineToIso("2026-07-14", "22:00")}
         deadlineDisplayMode="countdown"
         rule={{ kind: "daily" }}
         today="2026-07-14"
-        baseDate="2026-07-14"
         onChange={vi.fn()}
       />
     );
@@ -52,19 +52,19 @@ describe("ScheduleControl", () => {
     const { container } = render(
       <>
         <ScheduleControl
+          scheduledFor={null}
           deadlineAt={null}
           deadlineDisplayMode="countdown"
           rule={null}
           today="2026-07-14"
-          baseDate="2026-07-14"
           onChange={vi.fn()}
         />
         <ScheduleControl
+          scheduledFor="2026-07-14"
           deadlineAt={null}
           deadlineDisplayMode="countdown"
           rule={{ kind: "daily" }}
           today="2026-07-14"
-          baseDate="2026-07-14"
           onChange={vi.fn()}
         />
       </>
@@ -107,6 +107,7 @@ describe("ScheduleControl", () => {
 
     expect(onChange).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledWith({
+      scheduledFor: null,
       deadlineAt: localDeadlineToIso("2026-07-14", "22:00"),
       deadlineDisplayMode: "countdown",
       rule: { kind: "daily" }
@@ -119,11 +120,11 @@ describe("ScheduleControl", () => {
     const onChange = vi.fn();
     render(
       <ScheduleControl
+        scheduledFor="2026-07-14"
         deadlineAt={null}
         deadlineDisplayMode="countdown"
         rule={{ kind: "daily" }}
         today="2026-07-14"
-        baseDate="2026-07-14"
         onChange={onChange}
       />
     );
@@ -133,17 +134,83 @@ describe("ScheduleControl", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("sets a future planned date without changing deadline or recurrence", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    renderControl(onChange);
+
+    await user.click(screen.getByRole("button", { name: /当前未设置/ }));
+    await user.click(screen.getByRole("tab", { name: "计划日期" }));
+    await user.click(screen.getByRole("button", { name: "明天" }));
+    expect(screen.getByText("明天 7月15日")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "完成" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      scheduledFor: "2026-07-15",
+      deadlineAt: null,
+      deadlineDisplayMode: "countdown",
+      rule: null
+    });
+  });
+
+  it("clears a standalone planned date", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <ScheduleControl
+        scheduledFor="2026-07-20"
+        deadlineAt={null}
+        deadlineDisplayMode="countdown"
+        rule={null}
+        today="2026-07-14"
+        onChange={onChange}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /计划/ }));
+    await user.click(screen.getByRole("button", { name: "无日期" }));
+    await user.click(screen.getByRole("button", { name: "完成" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      scheduledFor: null,
+      deadlineAt: null,
+      deadlineDisplayMode: "countdown",
+      rule: null
+    });
+  });
+
+  it("keeps an existing recurring occurrence plan read-only", async () => {
+    const user = userEvent.setup();
+    render(
+      <ScheduleControl
+        scheduledFor="2026-07-20"
+        deadlineAt={null}
+        deadlineDisplayMode="countdown"
+        rule={{ kind: "daily" }}
+        today="2026-07-14"
+        onChange={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /重复 每天/ }));
+
+    expect(screen.getByText(/计划日期由重复规则生成/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "无日期" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "今天" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "明天" })).toBeDisabled();
+  });
+
   it("saves the selected deadline display mode with the schedule", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     const deadlineAt = localDeadlineToIso("2026-07-14", "22:00");
     render(
       <ScheduleControl
+        scheduledFor={null}
         deadlineAt={deadlineAt}
         deadlineDisplayMode="countdown"
         rule={null}
         today="2026-07-14"
-        baseDate="2026-07-14"
         onChange={onChange}
       />
     );
@@ -156,6 +223,7 @@ describe("ScheduleControl", () => {
 
     expect(onChange).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledWith({
+      scheduledFor: null,
       deadlineAt,
       deadlineDisplayMode: "dateTime",
       rule: null
@@ -167,11 +235,11 @@ describe("ScheduleControl", () => {
     const onChange = vi.fn();
     render(
       <ScheduleControl
+        scheduledFor={null}
         deadlineAt={localDeadlineToIso("2026-07-14", "22:00")}
         deadlineDisplayMode="countdown"
         rule={null}
         today="2026-07-14"
-        baseDate="2026-07-14"
         onChange={onChange}
       />
     );
@@ -200,20 +268,22 @@ describe("ScheduleControl", () => {
     const onChange = vi.fn();
     render(
       <ScheduleControl
+        scheduledFor="2026-07-14"
         deadlineAt={localDeadlineToIso("2026-07-14", "22:00")}
         deadlineDisplayMode="countdown"
         rule={{ kind: "weekdays" }}
         today="2026-07-14"
-        baseDate="2026-07-14"
         onChange={onChange}
       />
     );
 
     await user.click(screen.getByRole("button", { name: /截止/ }));
+    await user.click(screen.getByRole("tab", { name: "截止时间" }));
     await user.click(screen.getByRole("switch", { name: /设置截止时间/ }));
     await user.click(screen.getByRole("button", { name: "完成" }));
 
     expect(onChange).toHaveBeenCalledWith({
+      scheduledFor: "2026-07-14",
       deadlineAt: null,
       deadlineDisplayMode: "countdown",
       rule: { kind: "weekdays" }
@@ -225,11 +295,11 @@ describe("ScheduleControl", () => {
     const onChange = vi.fn();
     render(
       <ScheduleControl
+        scheduledFor={null}
         deadlineAt={null}
         deadlineDisplayMode="countdown"
         rule={null}
         today="2026-07-31"
-        baseDate="2026-07-31"
         onChange={onChange}
       />
     );
@@ -241,6 +311,7 @@ describe("ScheduleControl", () => {
     expect(screen.getByText("2026年8月")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "完成" }));
     expect(onChange).toHaveBeenCalledWith({
+      scheduledFor: null,
       deadlineAt: localDeadlineToIso("2026-08-01", "09:00"),
       deadlineDisplayMode: "countdown",
       rule: null
@@ -251,16 +322,17 @@ describe("ScheduleControl", () => {
     const user = userEvent.setup();
     render(
       <ScheduleControl
+        scheduledFor="2026-07-14"
         deadlineAt={null}
         deadlineDisplayMode="countdown"
         rule={{ kind: "weekly", weekdays: [1] }}
         today="2026-07-14"
-        baseDate="2026-07-14"
         onChange={vi.fn()}
       />
     );
 
     await user.click(screen.getByRole("button", { name: /重复 一/ }));
+    await user.click(screen.getByRole("tab", { name: "重复" }));
     await user.click(screen.getByRole("button", { name: "一" }));
     expect(screen.getByText("每周重复至少选择一天。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成" })).toBeDisabled();
@@ -270,11 +342,11 @@ describe("ScheduleControl", () => {
 function renderControl(onChange = vi.fn()) {
   return render(
     <ScheduleControl
+      scheduledFor={null}
       deadlineAt={null}
       deadlineDisplayMode="countdown"
       rule={null}
       today="2026-07-14"
-      baseDate="2026-07-14"
       onChange={onChange}
     />
   );

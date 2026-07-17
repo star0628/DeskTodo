@@ -46,6 +46,8 @@ export function formatLocalDateLabel(value: LocalDateKey, today: LocalDateKey): 
   }
 
   const [year, month, day] = value.split("-").map(Number);
+  if (value === addLocalDays(today, 1)) return `明天 ${month}月${day}日`;
+  if (value === addLocalDays(today, 2)) return `后天 ${month}月${day}日`;
   const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(
     new Date(year, month - 1, day, 12)
   );

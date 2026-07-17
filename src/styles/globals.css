@@ -400,7 +400,7 @@ button:active:not(:disabled) {
 .calendar-dialog .calendar-day-has-completions .rdp-day_button::after {
   content: "";
   position: absolute;
-  left: 50%;
+  left: calc(50% - 3px);
   bottom: 2px;
   width: 3px;
   height: 3px;
@@ -409,8 +409,67 @@ button:active:not(:disabled) {
   background: var(--accent-primary);
 }
 
+.calendar-dialog
+  .calendar-day-has-completions:not(.calendar-day-has-scheduled-tasks)
+  .rdp-day_button::after {
+  left: 50%;
+}
+
+.calendar-dialog .calendar-day-has-scheduled-tasks .rdp-day_button::before {
+  content: "";
+  position: absolute;
+  left: calc(50% + 3px);
+  bottom: 1px;
+  width: 5px;
+  height: 5px;
+  transform: translateX(-50%);
+  border: var(--stroke-thin) solid var(--text-secondary);
+  border-radius: var(--radius-circle);
+}
+
+.calendar-dialog
+  .calendar-day-has-scheduled-tasks:not(.calendar-day-has-completions)
+  .rdp-day_button::before {
+  left: 50%;
+}
+
 .calendar-dialog .rdp-selected.calendar-day-has-completions .rdp-day_button::after {
   background: var(--calendar-dot-selected);
+}
+
+.calendar-dialog .rdp-selected.calendar-day-has-scheduled-tasks .rdp-day_button::before {
+  border-color: var(--calendar-dot-selected);
+}
+
+.calendar-legend {
+  min-height: var(--size-target-min);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--type-caption-size);
+}
+
+.calendar-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.calendar-legend i {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-circle);
+}
+
+.calendar-legend-completed {
+  background: var(--accent-primary);
+}
+
+.calendar-legend-scheduled {
+  border: var(--stroke-thin) solid var(--text-secondary);
 }
 
 @media (max-height: 380px) {
@@ -1830,6 +1889,16 @@ button:active:not(:disabled) {
   flex: 1 1 auto;
 }
 
+.scheduled-date-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: var(--type-caption-size);
+  line-height: var(--line-height-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .deadline-meta {
   min-width: 0;
   display: flex;
@@ -1981,7 +2050,7 @@ button:active:not(:disabled) {
 
 .schedule-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3) 0;
 }
@@ -2015,6 +2084,32 @@ button:active:not(:disabled) {
 .schedule-tab-panel {
   display: flex;
   flex-direction: column;
+}
+
+.planned-date-summary {
+  min-height: var(--size-input);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-optical-6);
+  color: var(--text-secondary);
+  font-size: var(--type-label-size);
+}
+
+.planned-date-summary strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-planned-note {
+  margin: 0 var(--space-optical-6) var(--space-1);
+  color: var(--text-tertiary);
+  font-size: var(--type-caption-size);
+  line-height: var(--line-height-normal);
 }
 
 .schedule-deadline-toggle {
@@ -2179,6 +2274,11 @@ button:active:not(:disabled) {
   color: var(--text-primary);
 }
 
+.deadline-presets button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .schedule-calendar .rdp-root {
   --rdp-accent-color: var(--accent-primary);
   --rdp-day-width: var(--size-calendar-day-compact);
@@ -2251,6 +2351,10 @@ button:active:not(:disabled) {
 
 .schedule-calendar .rdp-outside:not(.rdp-selected) {
   opacity: 0.36;
+}
+
+.schedule-calendar .rdp-disabled {
+  opacity: 0.28;
 }
 
 .deadline-time-field {

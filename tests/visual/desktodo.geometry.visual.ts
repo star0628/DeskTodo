@@ -440,7 +440,7 @@ test("keeps all primary overlays inside the minimum viewport", async ({ page }) 
   overlayBoxes.calendar = await visibleDialogBox(page, "选择工作日期");
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "搜索历史任务" }).click();
+  await page.getByRole("button", { name: "搜索任务" }).click();
   overlayBoxes.search = await visibleDialogBox(page, "搜索任务");
   await page.keyboard.press("Escape");
 
@@ -449,7 +449,7 @@ test("keeps all primary overlays inside the minimum viewport", async ({ page }) 
   await page.keyboard.press("Escape");
 
   await taskCard(page, "回复客户关于交付时间的邮件")
-    .getByRole("button", { name: /设置截止时间或重复/ })
+    .getByRole("button", { name: /设置计划日期、截止时间或重复/ })
     .click();
   await page.getByRole("switch", { name: /设置截止时间/ }).click();
   overlayBoxes.recurrence = await visibleDialogBox(page, "时间安排");
@@ -489,7 +489,7 @@ test("maintains keyboard focus flow for quick add and dialogs", async ({ page })
   await page.keyboard.press("Escape");
   await expect(calendarTrigger).toBeFocused();
 
-  const searchTrigger = page.getByRole("button", { name: "搜索历史任务" });
+  const searchTrigger = page.getByRole("button", { name: "搜索任务" });
   await searchTrigger.click();
   const searchDialog = page.getByRole("dialog", { name: "搜索任务" });
   await expect(searchDialog).toBeVisible();
@@ -497,7 +497,7 @@ test("maintains keyboard focus flow for quick add and dialogs", async ({ page })
   await expect(searchTrigger).toBeFocused();
 
   const recurrenceTrigger = taskCard(page, "回复客户关于交付时间的邮件")
-    .getByRole("button", { name: /设置截止时间或重复/ });
+    .getByRole("button", { name: /设置计划日期、截止时间或重复/ });
   await recurrenceTrigger.click();
   await expect(page.getByRole("dialog", { name: "时间安排" })).toBeVisible();
   await page.getByRole("switch", { name: /设置截止时间/ }).click();

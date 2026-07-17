@@ -5,7 +5,7 @@ import {
   normalizeRecurrenceRule,
   recurrenceRulesEqual
 } from "./recurrence";
-import { getIsoTimestamp, toLocalDateKey } from "../utils/date";
+import { getIsoTimestamp, isLocalDateKey, toLocalDateKey } from "../utils/date";
 import { createId } from "../utils/ids";
 import {
   createDeadlinePattern,
@@ -45,7 +45,12 @@ import {
 export type RecurringDeleteBehavior = "skip" | "stop";
 
 export type TodoAction =
-  | { type: "addTask"; title: string }
+  | {
+      type: "addTask";
+      title: string;
+      scheduledFor?: LocalDateKey | null;
+      today?: LocalDateKey;
+    }
   | { type: "editTask"; id: TodoId; title: string }
   | { type: "toggleTask"; id: TodoId }
   | { type: "deleteTask"; id: TodoId; recurringBehavior?: RecurringDeleteBehavior }
@@ -69,6 +74,7 @@ export type TodoAction =
       deadlineAt: string | null;
       deadlineDisplayMode: DeadlineDisplayMode;
       rule: RecurrenceRule | null;
+      scheduledFor?: LocalDateKey | null;
       today: LocalDateKey;
     }
   | { type: "materializeRecurrences"; today: LocalDateKey }
@@ -81,7 +87,15 @@ export type TodoAction =
   | { type: "setCollapseCompletedByDefault"; enabled: boolean }
   | { type: "hydrateState"; state: AppState };
 
-export function createTodoItem(title: string, timestamp = getIsoTimestamp()): TodoItem {
+interface CreateTodoItemOptions {
+  timestamp?: string;
+  scheduledFor?: LocalDateKey | null;
+}
+
+export function createTodoItem(
+  title: string,
+  { timestamp = getIsoTimestamp(), scheduledFor = null }: CreateTodoItemOptions = {}
+): TodoItem {
   return {
     id: createId(),
     title,
@@ -91,7 +105,7 @@ export function createTodoItem(title: string, timestamp = getIsoTimestamp()): To
     completedAt: null,
     completedOn: null,
     important: false,
-    scheduledFor: null,
+    scheduledFor,
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
@@ -107,7 +121,19 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
     case "addTask": {
       const title = normalizeTitle(action.title);
       if (!title) return state;
-      return { ...state, tasks: [...state.tasks, createTodoItem(title)] };
+      const scheduledFor = action.scheduledFor ?? null;
+      if (
+        scheduledFor !== null &&
+        (!isLocalDateKey(scheduledFor) ||
+          !isLocalDateKey(action.today) ||
+          scheduledFor < action.today)
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        tasks: [...state.tasks, createTodoItem(title, { scheduledFor })]
+      };
     }
 
     case "editTask": {
@@ -162,7 +188,7 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
                     activeTaskId: null,
                     nextOccurrenceOn: getNextOccurrenceDate(
                       item.rule,
-                      toLocalDateKey(new Date(timestamp))
+                      getRecurrenceAnchor(task, toLocalDateKey(new Date(timestamp)))
                     ),
                     template: createRecurrenceTemplate(task),
                     updatedAt: timestamp
@@ -191,7 +217,7 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
       const timestamp = getIsoTimestamp();
       const updatedParent = {
         ...parent,
-        children: [...parent.children, createTodoItem(title, timestamp)],
+        children: [...parent.children, createTodoItem(title, { timestamp })],
         updatedAt: timestamp
       };
       const tasks = state.tasks.map((task) =>
@@ -368,6 +394,7 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
       return updateTaskSchedule(
         state,
         task,
+        task.scheduledFor,
         task.deadlineAt,
         task.deadlineDisplayMode,
         action.rule,
@@ -380,9 +407,19 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
       if (!task) return state;
       if (action.deadlineAt !== null && !isValidDeadlineInstant(action.deadlineAt)) return state;
       if (!isDeadlineDisplayMode(action.deadlineDisplayMode)) return state;
+      const scheduledFor =
+        action.scheduledFor === undefined ? task.scheduledFor : action.scheduledFor;
+      if (scheduledFor !== null && !isLocalDateKey(scheduledFor)) return state;
+      if (
+        scheduledFor !== task.scheduledFor &&
+        (scheduledFor === null ? task.recurrenceSeriesId !== null : scheduledFor < action.today)
+      ) {
+        return state;
+      }
       return updateTaskSchedule(
         state,
         task,
+        scheduledFor,
         action.deadlineAt,
         action.deadlineDisplayMode,
         action.rule,
@@ -503,6 +540,7 @@ function withSyncedSeriesTemplate(
 function updateTaskSchedule(
   state: AppState,
   task: TodoItem,
+  scheduledFor: LocalDateKey | null,
   deadlineAt: string | null,
   deadlineDisplayMode: DeadlineDisplayMode,
   requestedRule: RecurrenceRule | null,
@@ -511,17 +549,22 @@ function updateTaskSchedule(
   const existingSeries = getEnabledSeries(state, task.recurrenceSeriesId);
   const rule = requestedRule === null ? null : normalizeRecurrenceRule(requestedRule);
   if (requestedRule !== null && !rule) return state;
-  if (rule && deadlineAt && !createDeadlinePattern(deadlineAt, task.scheduledFor ?? today)) {
+  if (existingSeries && scheduledFor !== task.scheduledFor) return state;
+  const scheduleAnchor = scheduledFor ?? today;
+  if (rule && deadlineAt && !createDeadlinePattern(deadlineAt, scheduleAnchor)) {
     return state;
   }
 
+  const scheduleChanged = task.scheduledFor !== scheduledFor;
   const deadlineChanged = task.deadlineAt !== deadlineAt;
   const displayModeChanged = task.deadlineDisplayMode !== deadlineDisplayMode;
   const recurrenceChanged =
     rule === null
       ? existingSeries !== undefined
       : !existingSeries || !recurrenceRulesEqual(existingSeries.rule, rule);
-  if (!deadlineChanged && !displayModeChanged && !recurrenceChanged) return state;
+  if (!scheduleChanged && !deadlineChanged && !displayModeChanged && !recurrenceChanged) {
+    return state;
+  }
   if (rule && !existingSeries && task.done) return state;
 
   const timestamp = getIsoTimestamp();
@@ -529,10 +572,10 @@ function updateTaskSchedule(
   if (rule === null) {
     const updatedTask: TodoItem = {
       ...task,
+      scheduledFor,
       deadlineAt,
       deadlineDisplayMode,
       recurrenceSeriesId: existingSeries ? null : task.recurrenceSeriesId,
-      scheduledFor: existingSeries ? null : task.scheduledFor,
       updatedAt: timestamp
     };
     return {
@@ -565,10 +608,10 @@ function updateTaskSchedule(
               rule,
               template: createRecurrenceTemplate(
                 updatedTask,
-                updatedTask.scheduledFor ?? today
+                scheduleAnchor
               ),
               nextOccurrenceOn: recurrenceChanged
-                ? getNextOccurrenceDate(rule, today)
+                ? getNextOccurrenceDate(rule, getRecurrenceAnchor(updatedTask, today))
                 : series.nextOccurrenceOn,
               updatedAt: timestamp
             }
@@ -580,17 +623,17 @@ function updateTaskSchedule(
   const seriesId = createId();
   const updatedTask: TodoItem = {
     ...task,
+    scheduledFor: scheduleAnchor,
     deadlineAt,
     deadlineDisplayMode,
     recurrenceSeriesId: seriesId,
-    scheduledFor: today,
     updatedAt: timestamp
   };
   const series: RecurrenceSeries = {
     id: seriesId,
     rule,
-    template: createRecurrenceTemplate(updatedTask, today),
-    nextOccurrenceOn: getNextOccurrenceDate(rule, today),
+    template: createRecurrenceTemplate(updatedTask, scheduleAnchor),
+    nextOccurrenceOn: getNextOccurrenceDate(rule, scheduleAnchor),
     activeTaskId: task.id,
     enabled: true,
     createdAt: timestamp,
@@ -622,6 +665,7 @@ function withRecurringLifecycle(
     if (competingTask) return state;
   }
   const today = toLocalDateKey(new Date(timestamp));
+  const recurrenceAnchor = getRecurrenceAnchor(task, today);
   return {
     ...state,
     tasks,
@@ -632,7 +676,7 @@ function withRecurringLifecycle(
             template: createRecurrenceTemplate(task),
             activeTaskId: fullyComplete ? null : task.id,
             nextOccurrenceOn: fullyComplete
-              ? getNextOccurrenceDate(item.rule, today)
+              ? getNextOccurrenceDate(item.rule, recurrenceAnchor)
               : item.nextOccurrenceOn,
             updatedAt: timestamp
           }
@@ -660,6 +704,10 @@ function restoreSeriesSnapshot(
 
 function isTaskFullyComplete(task: TodoItem): boolean {
   return task.done && task.children.every((child) => child.done);
+}
+
+function getRecurrenceAnchor(task: TodoItem, today: LocalDateKey): LocalDateKey {
+  return task.scheduledFor && task.scheduledFor > today ? task.scheduledFor : today;
 }
 
 function normalizeTitle(title: string): string {

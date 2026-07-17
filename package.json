@@ -1,7 +1,7 @@
 {
   "name": "desktop-todo",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "A minimal local-first Todo desktop widget for Windows, built with Tauri 2 and React.",
   "license": "MIT",
   "author": "star0628",
