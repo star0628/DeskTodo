@@ -31,8 +31,8 @@
 | 项目 | 当前值 |
 | --- | --- |
 | 产品名 | DeskTodo |
-| 当前发布版本 | `v0.4.0` |
-| 本文基线提交 | `e2e9417` |
+| 当前发布版本 | `v0.4.1` |
+| 本文基线提交 | `4ca7610` |
 | GitHub | <https://github.com/star0628/DeskTodo> |
 | 主平台 | Windows 10/11 x64 |
 | 桌面框架 | Tauri 2 |
@@ -833,9 +833,9 @@ Events：
 - Rust/native：coordinator session/recovery/hide unit tests、Cargo 格式检查与 Tauri build；
 - Playwright：视觉快照、几何、焦点、最小窗口、长按拖拽和历史删除。
 
-v0.4.0 发布基线：
+v0.4.1 发布基线：
 
-- Vitest：44 files / 378 tests；
+- Vitest：47 files / 411 tests；
 - Playwright：73 tests；
 - npm audit：0 vulnerabilities；
 - Windows CI 和 Tauri NSIS build 通过。
