@@ -10,7 +10,7 @@
 
 DeskTodo is a Windows-first minimal desktop Todo widget. It is intentionally small: a frameless translucent desktop checklist with local persistence, tray behavior, and stable core task interactions.
 
-The current release is v0.4.0. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
+The current release is v0.4.1. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
 
 ## Download and Install
 
