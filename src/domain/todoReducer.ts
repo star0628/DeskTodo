@@ -431,6 +431,7 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
       return materializeDueRecurrences(state, action.today);
 
     case "setWindowLayerMode": {
+      if (!isWindowLayerMode(action.mode)) return state;
       if (state.settings.windowLayerMode === action.mode) return state;
       return {
         ...state,
@@ -443,6 +444,7 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
     }
 
     case "setColorTheme": {
+      if (!isColorThemeId(action.theme)) return state;
       if (state.settings.colorTheme === action.theme) return state;
       return {
         ...state,
@@ -500,11 +502,13 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
     }
 
     case "setCompactMode": {
+      if (typeof action.enabled !== "boolean") return state;
       if (state.settings.compactMode === action.enabled) return state;
       return { ...state, settings: { ...state.settings, compactMode: action.enabled } };
     }
 
     case "setCollapseCompletedByDefault": {
+      if (typeof action.enabled !== "boolean") return state;
       if (state.settings.collapseCompletedByDefault === action.enabled) return state;
       return {
         ...state,
@@ -515,6 +519,21 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
     default:
       return state;
   }
+}
+
+function isWindowLayerMode(value: unknown): value is WindowLayerMode {
+  return value === "alwaysOnTop" || value === "normal" || value === "alwaysOnBottom";
+}
+
+function isColorThemeId(value: unknown): value is ColorThemeId {
+  return (
+    value === "graphite-lime" ||
+    value === "citic-red" ||
+    value === "frost-blue" ||
+    value === "jade-forest" ||
+    value === "ink-gold" ||
+    value === "custom"
+  );
 }
 
 function withSyncedSeriesTemplate(

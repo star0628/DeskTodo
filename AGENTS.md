@@ -1,5 +1,7 @@
 # DeskTodo Engineering Rules
 
+- Read `PROJECT_CONTEXT.md` before planning or modifying DeskTodo. Treat it as the unified product and architecture orientation, then verify all task-specific facts against the current source and tests.
+
 - Do not add cloud sync, login, AI, Pomodoro, time tracking, projects, tags, natural language scheduling, notifications, drag sorting, auto edge hide, analytics, arbitrary custom themes, or a large settings page unless explicitly requested.
 - Todo state changes must go through `src/domain/todoReducer.ts`.
 - React components must not directly mutate `tasks` or nested `children` arrays.

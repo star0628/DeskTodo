@@ -4,11 +4,8 @@
   "description": "Default capability for DeskTodo main window",
   "windows": ["main"],
   "permissions": [
-    "core:default",
-    "core:window:allow-hide",
-    "core:window:allow-set-always-on-top",
-    "core:window:allow-set-always-on-bottom",
-    "core:window:allow-set-skip-taskbar",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
     "autostart:allow-enable",
     "autostart:allow-disable",
@@ -17,8 +14,11 @@
     "dialog:allow-save",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
-    "opener:default",
-    "store:default",
-    "window-state:default"
+    "store:allow-load",
+    "store:allow-get-store",
+    "store:allow-get",
+    "store:allow-set",
+    "store:allow-save",
+    "window-state:allow-save-window-state"
   ]
 }

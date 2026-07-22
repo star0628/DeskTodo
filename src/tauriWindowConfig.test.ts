@@ -7,92 +7,140 @@ interface TauriWindowConfig {
   decorations?: boolean;
   transparent?: boolean;
   shadow?: boolean;
+  visible?: boolean;
+  alwaysOnTop?: boolean;
 }
 
+interface SecurityConfig {
+  csp?: Record<string, string>;
+  devCsp?: Record<string, string>;
+}
+
+interface TauriConfig {
+  app?: {
+    windows?: TauriWindowConfig[];
+    security?: SecurityConfig;
+  };
+}
+
+const rustSource = () => readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
+const appSource = () => readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+const windowLayerSource = () => readFileSync(resolve(process.cwd(), "src/persistence/windowLayer.ts"), "utf8");
+
 describe("Tauri transparent window contract", () => {
-  it("disables the native undecorated window shadow that creates a Windows edge line", () => {
+  it("keeps the transparent undecorated window hidden in a safe normal config state", () => {
     const config = JSON.parse(
       readFileSync(resolve(process.cwd(), "src-tauri/tauri.conf.json"), "utf8")
-    ) as { app?: { windows?: TauriWindowConfig[] } };
+    ) as TauriConfig;
     const mainWindow = config.app?.windows?.find((window) => window.label === "main");
 
     expect(mainWindow).toMatchObject({
       decorations: false,
       transparent: true,
-      shadow: false
+      shadow: false,
+      visible: false,
+      alwaysOnTop: false
     });
   });
 
-  it("routes every user-facing reveal entry through the shared recovery path", () => {
-    const rustSource = readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
+  it("keeps loopback development access out of the production CSP", () => {
+    const config = JSON.parse(
+      readFileSync(resolve(process.cwd(), "src-tauri/tauri.conf.json"), "utf8")
+    ) as TauriConfig;
+    const releaseCsp = config.app?.security?.csp;
+    const devCsp = config.app?.security?.devCsp;
 
-    expect(rustSource).toContain("TrayIconEvent::Click");
-    expect(rustSource).toContain("button: MouseButton::Left");
-    expect(rustSource).toContain("button_state: MouseButtonState::Up");
-    expect(rustSource).toContain("TrayIconEvent::DoubleClick");
-    expect(rustSource).toContain("recover_main_window(tray.app_handle())");
-    expect(rustSource).toContain('"show" => recover_main_window(app)');
-    expect(rustSource).toContain("recover_main_window(app);");
-    expect(rustSource).toContain(".show_menu_on_left_click(false)");
-    expect(rustSource).toContain("show_main_window_on_startup(app.handle())");
+    expect(releaseCsp).toMatchObject({
+      "default-src": expect.stringContaining("'self'"),
+      "connect-src": expect.stringContaining("ipc:"),
+      "style-src": expect.stringContaining("'unsafe-inline'")
+    });
+    expect(releaseCsp?.["connect-src"]).not.toContain("127.0.0.1");
+    expect(releaseCsp?.["connect-src"]).not.toContain("ws:");
+    expect(devCsp?.["connect-src"]).toContain("http://127.0.0.1:1420");
+    expect(devCsp?.["connect-src"]).toContain("ws://127.0.0.1:1420");
   });
 
-  it("temporarily promotes, shows, restores and focuses, then performs one bounded verification", () => {
-    const rustSource = readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
-    const recoveryStart = rustSource.indexOf("fn recover_main_window");
-    const recoveryEnd = rustSource.indexOf("fn hide_main_window", recoveryStart);
-    const recoverySource = rustSource.slice(recoveryStart, recoveryEnd);
+  it("uses renderer sessions and main-thread acknowledgements for layer changes", () => {
+    const source = rustSource();
+    const frontend = windowLayerSource();
 
-    expect(recoveryStart).toBeGreaterThan(-1);
-    expect(recoverySource).toContain("set_always_on_bottom(false)");
-    expect(recoverySource).toContain("set_always_on_top(true)");
-    expect(recoverySource).toContain("force_windows_foreground(&window)");
-    expect(recoverySource.indexOf("window.show()")).toBeLessThan(
-      recoverySource.indexOf("window.unminimize()")
-    );
-    expect(recoverySource.indexOf("window.unminimize()")).toBeLessThan(
-      recoverySource.indexOf("window.set_focus()")
-    );
-    expect(recoverySource).toContain("Duration::from_millis(100)");
-    expect(recoverySource).toContain("run_on_main_thread");
-    expect(recoverySource).toContain("is_visible()");
-    expect(recoverySource).toContain("is_minimized()");
-    expect(recoverySource).toContain("is_focused()");
-    expect(recoverySource).toContain("RECOVERY_PENDING.store(true, Ordering::SeqCst)");
-    expect(recoverySource).toContain("complete_window_recovery(retry_window.app_handle())");
+    expect(source).toContain("renderer: Mutex<RendererSessionState>");
+    expect(source).toContain("fn begin_renderer_session");
+    expect(source).toContain("fn register_mode_request");
+    expect(source).toContain("fn is_current_mode_request");
+    expect(source).toContain("run_on_main_thread_and_wait");
+    expect(source).toContain("tauri::async_runtime::spawn_blocking");
+    expect(source).toContain("apply_window_layer_with_rollback");
+    expect(frontend).toContain("sessionId");
+    expect(frontend).toContain("createRendererSessionId");
+    expect(frontend).toContain("getNativeResponseError");
   });
 
-  it("settles the temporary foreground layer only after native focus succeeds", () => {
-    const rustSource = readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
+  it("atomically applies the hydrated mode and reveals the startup window", () => {
+    const source = rustSource();
+    const frontend = appSource();
+    const windowLayer = windowLayerSource();
 
-    expect(rustSource).toContain(
-      "WindowEvent::Focused(true) => complete_window_recovery(window.app_handle())"
-    );
-    expect(rustSource).toContain("RECOVERY_PENDING.swap(false, Ordering::SeqCst)");
-    expect(rustSource).toContain('window.emit("desktodo://recover-window", ())');
+    expect(source).toContain("async fn desktodo_initialize_window_lifecycle");
+    expect(source).toContain("run_mode_transaction(app, session_id, request_id, mode, true, None)");
+    expect(source).toContain("STARTUP_REVEAL_TIMEOUT");
+    expect(source).not.toContain("desktodo_show_main_window");
+    expect(frontend).toContain("windowLayerController.initialize(mode)");
+    expect(frontend).toContain("windowLayerReady={hasHydrated && windowLayerInitialized}");
+    expect(windowLayer).toContain("INITIALIZE_WINDOW_LIFECYCLE_COMMAND");
   });
 
-  it("uses a Windows-only native restore fallback without desktop embedding", () => {
-    const rustSource = readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
+  it("uses a cancellable recovery acknowledgement with a safe fallback", () => {
+    const source = rustSource();
+    const frontend = appSource();
+
+    expect(source).toContain("RECOVERY_ACK_TIMEOUT");
+    expect(source).toContain("fn desktodo_complete_window_recovery");
+    expect(source).toContain("schedule_recovery_ack_fallback");
+    expect(source).toContain('"modeSessionIdAtStart"');
+    expect(source).toContain("recovery_ack_fallback_blocking");
+    expect(frontend).toContain("await windowLayerController.flush()");
+    expect(frontend).toContain("windowLayerController.completeRecovery(payload.recoveryId)");
+    expect(source).not.toContain("RECOVERY_PENDING");
+  });
+
+  it("uses a native-issued hide token for every frontend hide acknowledgement", () => {
+    const source = rustSource();
+    const controls = readFileSync(resolve(process.cwd(), "src/components/WindowControls.tsx"), "utf8");
+    const frontend = appSource();
+
+    expect(source).toContain("fn desktodo_begin_hide_main_window");
+    expect(source).toContain("async fn desktodo_hide_main_window");
+    expect(source).toContain("schedule_hide_fallback");
+    expect(source).toContain("if !coordinator.is_current_hide(hide_id)");
+    expect(controls).toContain("BEGIN_HIDE_MAIN_WINDOW_COMMAND");
+    expect(controls).toContain("HIDE_MAIN_WINDOW_COMMAND, { hideId }");
+    expect(frontend).toContain('invoke("desktodo_hide_main_window", { hideId: payload.hideId })');
+  });
+
+  it("keeps native-only window permissions behind custom commands", () => {
     const cargoSource = readFileSync(resolve(process.cwd(), "src-tauri/Cargo.toml"), "utf8");
+    const capabilitySource = readFileSync(
+      resolve(process.cwd(), "src-tauri/capabilities/default.json"),
+      "utf8"
+    );
 
-    expect(cargoSource).toContain("[target.'cfg(windows)'.dependencies]");
-    expect(rustSource).toContain("ShowWindowAsync(hwnd, SW_RESTORE)");
-    expect(rustSource).toContain("Some(HWND_TOPMOST)");
-    expect(rustSource).toContain("BringWindowToTop(hwnd)");
-    expect(rustSource).toContain("SetForegroundWindow(hwnd)");
-    expect(rustSource).not.toMatch(/WorkerW|Progman|SetParent/);
+    expect(cargoSource).not.toContain("tauri-plugin-opener");
+    expect(capabilitySource).not.toContain("opener:");
+    expect(capabilitySource).not.toContain("core:default");
+    expect(capabilitySource).toContain("core:event:allow-listen");
+    expect(capabilitySource).toContain("core:window:allow-start-dragging");
+    expect(capabilitySource).not.toContain("allow-set-always-on-top");
+    expect(capabilitySource).not.toContain("allow-set-always-on-bottom");
+    expect(capabilitySource).not.toContain("allow-hide");
   });
 
-  it("reconciles the recovered native layer with frontend state", () => {
-    const rustSource = readFileSync(resolve(process.cwd(), "src-tauri/src/lib.rs"), "utf8");
-    const appSource = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
+  it("avoids unsupported desktop embedding mechanisms", () => {
+    const source = rustSource();
 
-    expect(rustSource).not.toContain("desktodo://reapply-window-layer");
-    expect(appSource).not.toContain("desktodo://reapply-window-layer");
-    expect(rustSource).toContain("desktodo://recover-window");
-    expect(appSource).toContain('listen("desktodo://recover-window"');
-    expect(appSource).toContain('dispatchTodoAction({ type: "setWindowLayerMode", mode: recoveredMode })');
-    expect(appSource).toContain("applyWindowLayerMode(state.settings.windowLayerMode)");
+    expect(source).not.toMatch(/WorkerW|Progman|SetParent/);
+    expect(source).toContain("ShowWindowAsync(hwnd, SW_RESTORE)");
+    expect(source).toContain("Some(HWND_TOPMOST)");
   });
 });

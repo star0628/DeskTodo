@@ -482,13 +482,21 @@ describe("todoReducer", () => {
   it("settings actions return the original state for identical or invalid values", () => {
     const initial = stateWithTasks();
 
+    expect(
+      todoReducer(initial, { type: "setWindowLayerMode", mode: "floating" } as never)
+    ).toBe(initial);
     expect(todoReducer(initial, { type: "setColorTheme", theme: "graphite-lime" })).toBe(initial);
+    expect(todoReducer(initial, { type: "setColorTheme", theme: "neon" } as never)).toBe(initial);
     expect(todoReducer(initial, { type: "setFontSize", size: 16 })).toBe(initial);
     expect(todoReducer(initial, { type: "setFontSize", size: 11 })).toBe(initial);
     expect(todoReducer(initial, { type: "setFontSize", size: 16.5 })).toBe(initial);
     expect(todoReducer(initial, { type: "setCompactMode", enabled: false })).toBe(initial);
+    expect(todoReducer(initial, { type: "setCompactMode", enabled: "yes" } as never)).toBe(initial);
     expect(
       todoReducer(initial, { type: "setCollapseCompletedByDefault", enabled: false })
+    ).toBe(initial);
+    expect(
+      todoReducer(initial, { type: "setCollapseCompletedByDefault", enabled: 1 } as never)
     ).toBe(initial);
   });
 

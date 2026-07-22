@@ -52,6 +52,8 @@ jobs:
 
       - name: Run release checks
         run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo test --manifest-path src-tauri/Cargo.toml
           npm run typecheck
           npm test
           npm audit --audit-level=high

@@ -77,8 +77,12 @@ export function safeParseAppState(rawValue: unknown): AppState {
 }
 
 export function parseAppState(rawValue: unknown): ParseAppStateResult {
-  if (rawValue === null || rawValue === undefined || rawValue === "") {
+  if (rawValue === null || rawValue === undefined) {
     return { state: fallbackDefaultState(), status: "missing" };
+  }
+
+  if (rawValue === "") {
+    return { state: fallbackDefaultState(), status: "invalid" };
   }
 
   if (typeof rawValue === "string") {
@@ -229,7 +233,7 @@ function migrateV8AppState(value: Record<string, unknown>): AppState | null {
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
-  return hasValidStateRelationships(state) ? state : null;
+  return finalizeMigratedState(state);
 }
 
 function migrateV7AppState(value: Record<string, unknown>): AppState | null {
@@ -245,7 +249,7 @@ function migrateV7AppState(value: Record<string, unknown>): AppState | null {
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
-  return hasValidStateRelationships(state) ? state : null;
+  return finalizeMigratedState(state);
 }
 
 function migrateV6AppState(value: Record<string, unknown>): AppState | null {
@@ -263,7 +267,7 @@ function migrateV6AppState(value: Record<string, unknown>): AppState | null {
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
-  return hasValidStateRelationships(state) ? state : null;
+  return finalizeMigratedState(state);
 }
 
 function migrateV5AppState(value: Record<string, unknown>): AppState | null {
@@ -281,7 +285,7 @@ function migrateV5AppState(value: Record<string, unknown>): AppState | null {
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
-  return hasValidStateRelationships(state) ? state : null;
+  return finalizeMigratedState(state);
 }
 
 function parseParentTodoItem(
@@ -566,33 +570,33 @@ function migrateV4AppState(value: Record<string, unknown>): AppState | null {
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
-  return hasValidStateRelationships(state) ? state : null;
+  return finalizeMigratedState(state);
 }
 
 function migrateV3AppState(value: Record<string, unknown>): AppState | null {
   if (!Array.isArray(value.tasks) || !value.tasks.every(isV3ParentTodoItem)) return null;
   const settings = migrateV3AppSettings(value.settings);
   if (!settings) return null;
-  return {
+  return finalizeMigratedState({
     schemaVersion: 9,
     tasks: value.tasks.map(migrateV3TodoItem),
     archivedCompletions: [],
     recurrenceSeries: [],
     settings
-  };
+  });
 }
 
 function migrateV2AppState(value: Record<string, unknown>): AppState | null {
   if (!Array.isArray(value.tasks) || !value.tasks.every(isV3ParentTodoItem)) return null;
   const settings = migrateLegacyAppSettings(value.settings);
   if (!settings) return null;
-  return {
+  return finalizeMigratedState({
     schemaVersion: 9,
     tasks: value.tasks.map(migrateV3TodoItem),
     archivedCompletions: [],
     recurrenceSeries: [],
     settings
-  };
+  });
 }
 
 function migrateLegacyAppState(value: Record<string, unknown>): AppState | null {
@@ -601,13 +605,19 @@ function migrateLegacyAppState(value: Record<string, unknown>): AppState | null 
   if (!settings) return null;
   const tasks = value.tasks.map(migrateLegacyTodoItem);
   if (tasks.some(isNull)) return null;
-  return {
+  return finalizeMigratedState({
     schemaVersion: 9,
     tasks: tasks as TodoItem[],
     archivedCompletions: [],
     recurrenceSeries: [],
     settings
-  };
+  });
+}
+
+function finalizeMigratedState(state: AppState): AppState | null {
+  // Run the current-schema parser after every migration so that an older
+  // shape can never be upgraded into a state that the next launch rejects.
+  return toAppState(state);
 }
 
 function migrateV3TodoItem(value: V3TodoItem): TodoItem {
