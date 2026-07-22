@@ -155,6 +155,10 @@ describe("appStateSchema", () => {
     expect(safeParseAppState("{broken")).toEqual(fallbackDefaultState());
   });
 
+  it("treats an existing empty persisted value as invalid rather than missing", () => {
+    expect(parseAppState("")).toEqual({ state: fallbackDefaultState(), status: "invalid" });
+  });
+
   it("unknown schema version returns status invalid", () => {
     const unknown = { ...fallbackDefaultState(), schemaVersion: 10 };
     expect(parseAppState(unknown)).toEqual({ state: fallbackDefaultState(), status: "invalid" });
@@ -458,6 +462,43 @@ describe("appStateSchema", () => {
     expect(result.state.settings.windowLayerMode).toBe("alwaysOnTop");
   });
 
+  it("rejects v1-v3 migrations that would produce duplicate current-schema IDs", () => {
+    const legacyStates = [legacyState(false), v2State(), v3State()];
+
+    for (const legacy of legacyStates) {
+      const duplicate = {
+        ...legacy,
+        tasks: [...legacy.tasks, { ...legacy.tasks[0], title: "Duplicate" }]
+      };
+
+      expect(parseAppState(duplicate)).toEqual({
+        state: fallbackDefaultState(),
+        status: "invalid"
+      });
+    }
+  });
+
+  it("returns migrated states that the current schema can read back", () => {
+    const { archivedCompletions: _archive, ...v7Current } = fallbackDefaultState();
+    const legacyStates = [
+      legacyState(false),
+      v2State(),
+      v3State(),
+      v4State(),
+      v5State(),
+      v6State(),
+      { ...v7Current, schemaVersion: 7 },
+      { ...fallbackDefaultState(), schemaVersion: 8 }
+    ];
+
+    for (const legacy of legacyStates) {
+      const migrated = parseAppState(legacy);
+
+      expect(migrated.status).toBe("migrated");
+      expect(parseAppState(JSON.stringify(migrated.state)).status).toBe("ok");
+    }
+  });
+
   it("invalid windowLayerMode returns status invalid", () => {
     const invalidState = {
       ...fallbackDefaultState(),
@@ -643,6 +684,19 @@ describe("localTaskStore", () => {
     await expect(store.load()).resolves.toEqual({ state: fallbackDefaultState(), status: "invalid" });
   });
 
+  it("returns an error fallback when storage read access throws", async () => {
+    const store = createLocalTaskStore({
+      getItem() {
+        throw new Error("storage denied");
+      },
+      setItem() {
+        return undefined;
+      }
+    });
+
+    await expect(store.load()).resolves.toEqual({ state: fallbackDefaultState(), status: "error" });
+  });
+
   it("saves and loads a v9 app state roundtrip", async () => {
     const storage = createMemoryStorage();
     const store = createLocalTaskStore(storage);
@@ -651,6 +705,31 @@ describe("localTaskStore", () => {
     await store.save(state);
 
     await expect(store.load()).resolves.toEqual({ state, status: "ok" });
+  });
+
+  it("rejects invalid state before writing storage", async () => {
+    const storage = createMemoryStorage();
+    const store = createLocalTaskStore(storage);
+    const invalidState = {
+      ...fallbackDefaultState(),
+      tasks: [{ ...currentTask(false), scheduledFor: "not-a-local-date" }]
+    } as unknown as AppState;
+
+    await expect(store.save(invalidState)).rejects.toThrow("invalid DeskTodo AppState");
+    expect(storage.getItem("desktodo:app-state")).toBeNull();
+  });
+
+  it("rejects storage write failures so callers can retain the recovery guard", async () => {
+    const store = createLocalTaskStore({
+      getItem() {
+        return null;
+      },
+      setItem() {
+        throw new Error("storage quota exceeded");
+      }
+    });
+
+    await expect(store.save(fallbackDefaultState())).rejects.toThrow("storage quota exceeded");
   });
 
   it("keeps a v8 backup before the first future-planning migration save", async () => {
@@ -663,6 +742,51 @@ describe("localTaskStore", () => {
     await store.save(loaded.state);
 
     expect(storage.getItem("desktodo:app-state-v8-backup")).toBe(rawV8);
+  });
+
+  it("writes a local migration backup before attempting the upgraded primary state", async () => {
+    const rawLegacy = JSON.stringify(legacyState(false));
+    const values = new Map<string, string>([["desktodo:app-state", rawLegacy]]);
+    const writes: string[] = [];
+    const storage = {
+      getItem(key: string) {
+        return values.get(key) ?? null;
+      },
+      setItem(key: string, value: string) {
+        writes.push(key);
+        values.set(key, value);
+      }
+    };
+    const store = createLocalTaskStore(storage);
+    const loaded = await store.load();
+
+    await store.save(loaded.state);
+
+    expect(writes).toEqual([
+      "desktodo:app-state-v1-backup",
+      "desktodo:app-state"
+    ]);
+  });
+
+  it("does not replace a migrated primary state when its backup write fails", async () => {
+    const rawLegacy = JSON.stringify(legacyState(false));
+    let wrotePrimaryState = false;
+    const storage = {
+      getItem(key: string) {
+        return key === "desktodo:app-state" ? rawLegacy : null;
+      },
+      setItem(key: string) {
+        if (key === "desktodo:app-state-v1-backup") {
+          throw new Error("backup write failed");
+        }
+        wrotePrimaryState = true;
+      }
+    };
+    const store = createLocalTaskStore(storage);
+    const loaded = await store.load();
+
+    await expect(store.save(loaded.state)).rejects.toThrow("backup write failed");
+    expect(wrotePrimaryState).toBe(false);
   });
 
   it("keeps a v7 backup before the first completion-archive migration save", async () => {

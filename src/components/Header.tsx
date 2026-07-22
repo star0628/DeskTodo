@@ -12,6 +12,11 @@ interface HeaderProps {
   progressRatio: number;
   windowLayerMode: WindowLayerMode;
   onWindowLayerModeChange: (mode: WindowLayerMode) => void;
+  windowLayerReady?: boolean;
+  windowLayerAvailable?: boolean;
+  windowLayerPending?: boolean;
+  windowLayerError?: string | null;
+  flushWindowState?: () => Promise<void>;
   settings: AppSettings;
   appState?: AppState;
   dispatch: (action: TodoAction) => void;
@@ -24,6 +29,11 @@ export function Header({
   progressRatio,
   windowLayerMode,
   onWindowLayerModeChange,
+  windowLayerReady,
+  windowLayerAvailable,
+  windowLayerPending,
+  windowLayerError,
+  flushWindowState,
   settings,
   appState,
   dispatch,
@@ -49,7 +59,14 @@ export function Header({
         aria-label="应用与窗口控制"
         data-window-drag-exclude
       >
-        <WindowLayerControl mode={windowLayerMode} onChange={onWindowLayerModeChange} />
+        <WindowLayerControl
+          mode={windowLayerMode}
+          onChange={onWindowLayerModeChange}
+          ready={windowLayerReady}
+          available={windowLayerAvailable}
+          pending={windowLayerPending}
+          error={windowLayerError}
+        />
         <SettingsDialog
           appState={appState}
           settings={settings}
@@ -57,7 +74,7 @@ export function Header({
           onBackgroundOpacityPreview={onBackgroundOpacityPreview}
           onCustomThemePreview={onCustomThemePreview}
         />
-        <WindowControls />
+        <WindowControls flush={flushWindowState} />
       </div>
     </header>
   );

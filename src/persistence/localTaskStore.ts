@@ -1,6 +1,11 @@
 import { AppState } from "../domain/todoTypes";
 import { AppStateRepository } from "./appStateRepository";
-import { fallbackDefaultState, parseAppState, safeParseAppState } from "./appStateSchema";
+import {
+  fallbackDefaultState,
+  isAppState,
+  parseAppState,
+  safeParseAppState
+} from "./appStateSchema";
 
 const STORAGE_KEY = "desktodo:app-state";
 const V1_BACKUP_KEY = "desktodo:app-state-v1-backup";
@@ -20,17 +25,27 @@ export function createLocalTaskStore(storage = getBrowserStorage()): AppStateRep
   return {
     async load() {
       if (!storage) return { state: fallbackDefaultState(), status: "missing" };
-      const storedValue = storage.getItem(STORAGE_KEY);
-      const result = parseAppState(storedValue);
-      pendingMigrationBackup =
-        result.status === "migrated" && storedValue
-          ? { key: getBackupKey(storedValue), value: storedValue }
-          : null;
-      return result;
+      try {
+        const storedValue = storage.getItem(STORAGE_KEY);
+        const result = parseAppState(storedValue);
+        pendingMigrationBackup =
+          result.status === "migrated" && storedValue
+            ? { key: getBackupKey(storedValue), value: storedValue }
+            : null;
+        return result;
+      } catch {
+        pendingMigrationBackup = null;
+        return { state: fallbackDefaultState(), status: "error" };
+      }
     },
     async save(state: AppState) {
+      if (!isAppState(state)) {
+        throw new Error("Refusing to persist an invalid DeskTodo AppState.");
+      }
       if (!storage) return;
       if (pendingMigrationBackup && storage.getItem(pendingMigrationBackup.key) === null) {
+        // localStorage writes synchronously, so the rollback copy is durable
+        // before the upgraded primary state can be replaced.
         storage.setItem(pendingMigrationBackup.key, pendingMigrationBackup.value);
       }
       storage.setItem(STORAGE_KEY, JSON.stringify(state));

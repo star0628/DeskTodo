@@ -198,33 +198,30 @@ test("keeps the common right edge aligned", async ({ page }) => {
   expect(result.maximumDelta ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
 });
 
-test("keeps header controls fixed while the layer label changes", async ({ page }) => {
+test("keeps header controls fixed when browser-only window operations are unavailable", async ({ page }) => {
   await openVisualApp(page, createVisualState("typography", { fontSize: 20 }), {
     viewport: { width: 300, height: 280 }
   });
 
-  const snapshots: Array<Record<string, number>> = [];
   const layerControl = page.locator(".window-layer-control");
-  for (let index = 0; index < 3; index += 1) {
-    snapshots.push(
-      await page.evaluate(() => {
-        const selectors = {
-          layer: ".window-layer-control",
-          settings: ".settings-trigger",
-          hide: '[aria-label="隐藏窗口"]',
-          close: '[aria-label="关闭到托盘"]'
-        };
-        return Object.fromEntries(
-          Object.entries(selectors).flatMap(([name, selector]) => {
-            const box = document.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
-            return box ? [[`${name}X`, box.x], [`${name}Y`, box.y], [`${name}Width`, box.width]] : [];
-          })
-        );
+  await expect(layerControl).toBeDisabled();
+  await expect(page.getByRole("button", { name: "隐藏窗口，窗口控制仅桌面版可用" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "关闭到托盘，窗口控制仅桌面版可用" })).toBeDisabled();
+
+  const snapshot = await page.evaluate(() => {
+    const selectors = {
+      layer: ".window-layer-control",
+      settings: ".settings-trigger",
+      hide: '[aria-label^="隐藏窗口"]',
+      close: '[aria-label^="关闭到托盘"]'
+    };
+    return Object.fromEntries(
+      Object.entries(selectors).flatMap(([name, selector]) => {
+        const box = document.querySelector<HTMLElement>(selector)?.getBoundingClientRect();
+        return box ? [[`${name}X`, box.x], [`${name}Y`, box.y], [`${name}Width`, box.width]] : [];
       })
     );
-    await layerControl.click();
-    await settleVisualState(page);
-  }
+  });
 
   const layout = await page.evaluate(() => {
     const header = document.querySelector<HTMLElement>(".header")?.getBoundingClientRect();
@@ -239,24 +236,14 @@ test("keeps header controls fixed while the layer label changes", async ({ page 
       headerBottom: header?.bottom ?? -1
     };
   });
-  const keys = ["layerX", "settingsX", "hideX", "closeX"];
-  const deltas = Object.fromEntries(
-    keys.map((key) => {
-      const values = snapshots.map((snapshot) => snapshot[key]);
-      return [key, Math.max(...values) - Math.min(...values)];
-    })
-  );
-  const result = { snapshots, deltas, layout };
+  const result = { snapshot, layout };
   metrics.headerControlStability = result;
 
   expect(layout.display).toBe("grid");
   expect(layout.flexWrap).toBe("nowrap");
   expect(layout.titleRight).toBeLessThanOrEqual(layout.actionsLeft);
   expect(layout.actionsBottom).toBeLessThanOrEqual(layout.headerBottom);
-  expect(snapshots[0].layerWidth).toBe(44);
-  for (const delta of Object.values(deltas)) {
-    expect(delta).toBeLessThanOrEqual(1);
-  }
+  expect(snapshot.layerWidth).toBe(44);
 });
 
 test("keeps search anchored while the Today shortcut appears", async ({ page }) => {

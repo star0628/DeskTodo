@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Store } from "@tauri-apps/plugin-store";
 import { AppState } from "../domain/todoTypes";
 import { AppStateRepository } from "./appStateRepository";
-import { fallbackDefaultState, parseAppState } from "./appStateSchema";
+import { fallbackDefaultState, isAppState, parseAppState } from "./appStateSchema";
 
 const STORE_FILE = "desktodo-state.json";
 const STATE_KEY = "app-state";
@@ -25,15 +25,22 @@ export interface TauriStoreLike {
 
 type StoreFileStatus = "present" | "missing" | "invalid" | "error";
 
+interface PendingMigrationBackup {
+  key: string;
+  value: unknown;
+  durable: boolean;
+}
+
 export function createTauriTaskStore(
   loadStore: () => Promise<TauriStoreLike> = getStore,
   getFileStatus: () => Promise<StoreFileStatus> = async () => "present"
 ): AppStateRepository {
-  let pendingMigrationBackup: { key: string; value: unknown } | undefined;
+  let pendingMigrationBackup: PendingMigrationBackup | undefined;
 
   return {
     async load() {
       try {
+        pendingMigrationBackup = undefined;
         const fileStatus = await getFileStatus();
         if (fileStatus === "invalid") {
           return { state: fallbackDefaultState(), status: "invalid" };
@@ -48,7 +55,7 @@ export function createTauriTaskStore(
         const result = parseAppState(storedState);
         pendingMigrationBackup =
           result.status === "migrated"
-            ? { key: getBackupKey(storedState), value: storedState }
+            ? { key: getBackupKey(storedState), value: storedState, durable: false }
             : undefined;
         return result;
       } catch (error) {
@@ -58,13 +65,21 @@ export function createTauriTaskStore(
     },
 
     async save(state: AppState) {
+      if (!isAppState(state)) {
+        throw new Error("Refusing to persist an invalid DeskTodo AppState.");
+      }
       try {
         const store = await loadStore();
-        if (pendingMigrationBackup !== undefined) {
-          const existingBackup = await store.get<unknown>(pendingMigrationBackup.key);
+        const pendingBackup = pendingMigrationBackup;
+        if (pendingBackup !== undefined && !pendingBackup.durable) {
+          const existingBackup = await store.get<unknown>(pendingBackup.key);
           if (existingBackup === undefined) {
-            await store.set(pendingMigrationBackup.key, pendingMigrationBackup.value);
+            await store.set(pendingBackup.key, pendingBackup.value);
           }
+          // plugin-store is configured with autoSave: false. Persist the
+          // rollback copy in its own write before staging the schema upgrade.
+          await store.save();
+          pendingBackup.durable = true;
         }
         await store.set(STATE_KEY, state);
         await store.save();

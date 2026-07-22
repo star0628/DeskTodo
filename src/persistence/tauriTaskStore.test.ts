@@ -91,6 +91,112 @@ describe("tauriTaskStore", () => {
     warn.mockRestore();
   });
 
+  it("rejects an invalid state before opening the native Store", async () => {
+    const loadStore = vi.fn(async () => createMockStore(undefined));
+    const store = createTauriTaskStore(loadStore);
+    const invalidState = {
+      ...fallbackDefaultState(),
+      tasks: [
+        {
+          id: "invalid",
+          title: "Invalid",
+          done: false,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          completedAt: null,
+          completedOn: null,
+          important: false,
+          scheduledFor: "not-a-local-date",
+          deadlineAt: null,
+          deadlineDisplayMode: "countdown",
+          recurrenceSeriesId: null,
+          children: []
+        }
+      ]
+    } as unknown as AppState;
+
+    await expect(store.save(invalidState)).rejects.toThrow("invalid DeskTodo AppState");
+    expect(loadStore).not.toHaveBeenCalled();
+  });
+
+  it("durably saves a migration backup before staging the upgraded primary state", async () => {
+    const v1 = {
+      schemaVersion: 1,
+      tasks: [],
+      settings: {
+        alwaysOnTop: true,
+        compactMode: false,
+        theme: "dark",
+        windowLayerMode: "alwaysOnTop"
+      }
+    };
+    let durableValues = new Map<string, unknown>([["app-state", v1]]);
+    const stagedValues = new Map(durableValues);
+    const durableSnapshots: Array<Map<string, unknown>> = [];
+    const mockStore: TauriStoreLike = {
+      async get<T>(key: string) {
+        return stagedValues.get(key) as T | undefined;
+      },
+      async set(key: string, value: unknown) {
+        stagedValues.set(key, value);
+      },
+      async save() {
+        durableValues = new Map(stagedValues);
+        durableSnapshots.push(new Map(durableValues));
+      }
+    };
+    const store = createTauriTaskStore(async () => mockStore);
+    const loaded = await store.load();
+
+    await store.save(loaded.state);
+
+    expect(durableSnapshots).toHaveLength(2);
+    expect(durableSnapshots[0].get("app-state")).toBe(v1);
+    expect(durableSnapshots[0].get("app-state-v1-backup")).toBe(v1);
+    expect(durableSnapshots[1].get("app-state")).toMatchObject({ schemaVersion: 9 });
+  });
+
+  it("does not stage the upgraded primary state when the backup checkpoint fails", async () => {
+    const v1 = {
+      schemaVersion: 1,
+      tasks: [],
+      settings: {
+        alwaysOnTop: true,
+        compactMode: false,
+        theme: "dark",
+        windowLayerMode: "alwaysOnTop"
+      }
+    };
+    let durableValues = new Map<string, unknown>([["app-state", v1]]);
+    const stagedValues = new Map(durableValues);
+    let saveCalls = 0;
+    const mockStore: TauriStoreLike = {
+      async get<T>(key: string) {
+        return stagedValues.get(key) as T | undefined;
+      },
+      async set(key: string, value: unknown) {
+        stagedValues.set(key, value);
+      },
+      async save() {
+        saveCalls += 1;
+        if (saveCalls === 1) throw new Error("backup checkpoint failed");
+        durableValues = new Map(stagedValues);
+      }
+    };
+    const store = createTauriTaskStore(async () => mockStore);
+    const loaded = await store.load();
+
+    await expect(store.save(loaded.state)).rejects.toThrow("backup checkpoint failed");
+    expect(durableValues.get("app-state")).toBe(v1);
+    expect(durableValues.get("app-state-v1-backup")).toBeUndefined();
+
+    await store.save(loaded.state);
+
+    expect(saveCalls).toBe(3);
+    expect(durableValues.get("app-state-v1-backup")).toBe(v1);
+    expect(durableValues.get("app-state")).toMatchObject({ schemaVersion: 9 });
+  });
+
   it("keeps a v1 backup before saving a migrated state", async () => {
     const values = new Map<string, unknown>([
       [
