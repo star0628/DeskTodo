@@ -37,7 +37,9 @@ function currentTask(done = false) {
     scheduledFor: null,
     deadlineAt: null,
     deadlineDisplayMode: "countdown" as const,
-    recurrenceSeriesId: null
+    recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null
   };
 }
 
@@ -129,8 +131,8 @@ function v2State() {
 }
 
 describe("appStateSchema", () => {
-  it("fallbackDefaultState uses schema v9 and stable visual defaults", () => {
-    expect(fallbackDefaultState().schemaVersion).toBe(9);
+  it("fallbackDefaultState uses schema v10 and stable visual defaults", () => {
+    expect(fallbackDefaultState().schemaVersion).toBe(10);
     expect(fallbackDefaultState().archivedCompletions).toEqual([]);
     expect(fallbackDefaultState().settings.windowLayerMode).toBe("alwaysOnTop");
     expect(fallbackDefaultState().settings.alwaysOnTop).toBe(true);
@@ -160,7 +162,7 @@ describe("appStateSchema", () => {
   });
 
   it("unknown schema version returns status invalid", () => {
-    const unknown = { ...fallbackDefaultState(), schemaVersion: 10 };
+    const unknown = { ...fallbackDefaultState(), schemaVersion: 11 };
     expect(parseAppState(unknown)).toEqual({ state: fallbackDefaultState(), status: "invalid" });
   });
 
@@ -169,11 +171,11 @@ describe("appStateSchema", () => {
     const result = parseAppState({ ...current, schemaVersion: 7 });
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(9);
+    expect(result.state.schemaVersion).toBe(10);
     expect(result.state.archivedCompletions).toEqual([]);
   });
 
-  it("rejects invalid archived completion records in schema v9", () => {
+  it("rejects invalid archived completion records in schema v10", () => {
     const state = fallbackDefaultState();
     const result = parseAppState({
       ...state,
@@ -223,11 +225,36 @@ describe("appStateSchema", () => {
     const result = parseAppState(legacy);
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(9);
+    expect(result.state.schemaVersion).toBe(10);
     expect(result.state.tasks).toEqual(legacy.tasks);
   });
 
-  it("accepts a standalone future planned date in schema v9", () => {
+  it("migrates schema v9 with null calendar fields and an expanded agenda", () => {
+    const task = currentTask(false) as Record<string, unknown>;
+    delete task.timeBlock;
+    delete task.calendarEventRef;
+    const settings = {
+      ...fallbackDefaultState().settings
+    } as Record<string, unknown>;
+    delete settings.calendarAgendaCollapsed;
+    const legacy = {
+      ...fallbackDefaultState(),
+      schemaVersion: 9,
+      tasks: [task],
+      settings
+    };
+
+    const result = parseAppState(legacy);
+
+    expect(result.status).toBe("migrated");
+    expect(result.state).toMatchObject({
+      schemaVersion: 10,
+      tasks: [{ timeBlock: null, calendarEventRef: null }],
+      settings: { calendarAgendaCollapsed: false }
+    });
+  });
+
+  it("accepts a standalone future planned date in schema v10", () => {
     const plannedState: AppState = {
       ...fallbackDefaultState(),
       tasks: [{ ...currentTask(false), scheduledFor: "2026-07-20" }]
@@ -236,7 +263,7 @@ describe("appStateSchema", () => {
     expect(parseAppState(plannedState)).toEqual({ state: plannedState, status: "ok" });
   });
 
-  it("rejects an independently scheduled child in schema v9", () => {
+  it("rejects an independently scheduled child in schema v10", () => {
     const invalidState = {
       ...fallbackDefaultState(),
       tasks: [
@@ -267,14 +294,14 @@ describe("appStateSchema", () => {
     const result = parseAppState(legacy);
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(9);
+    expect(result.state.schemaVersion).toBe(10);
     expect(result.state.tasks[0]).toMatchObject({
       deadlineAt,
       deadlineDisplayMode: "countdown"
     });
   });
 
-  it("rejects an invalid deadline display mode in schema v9", () => {
+  it("rejects an invalid deadline display mode in schema v10", () => {
     const invalid = {
       ...fallbackDefaultState(),
       tasks: [{ ...currentTask(false), deadlineDisplayMode: "clock" }]
@@ -284,6 +311,41 @@ describe("appStateSchema", () => {
       state: fallbackDefaultState(),
       status: "invalid"
     });
+  });
+
+  it("rejects invalid time blocks and duplicate calendar event references in schema v10", () => {
+    const invalidTimeBlock = {
+      ...fallbackDefaultState(),
+      tasks: [
+        {
+          ...currentTask(false),
+          scheduledFor: "2026-07-29",
+          timeBlock: {
+            kind: "timed",
+            startsAt: new Date(2026, 6, 29, 11, 0).toISOString(),
+            endsAt: new Date(2026, 6, 29, 10, 0).toISOString()
+          }
+        }
+      ]
+    };
+    const duplicateReference = {
+      ...fallbackDefaultState(),
+      tasks: [
+        {
+          ...currentTask(false),
+          id: "first",
+          calendarEventRef: "source-1:event-1"
+        },
+        {
+          ...currentTask(false),
+          id: "second",
+          calendarEventRef: "source-1:event-1"
+        }
+      ]
+    };
+
+    expect(parseAppState(invalidTimeBlock).status).toBe("invalid");
+    expect(parseAppState(duplicateReference).status).toBe("invalid");
   });
 
   it("migrates v6 recurrence templates to countdown display", () => {
@@ -325,7 +387,7 @@ describe("appStateSchema", () => {
     const result = parseAppState(v5State());
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(9);
+    expect(result.state.schemaVersion).toBe(10);
     expect(result.state.settings.customThemeColors).toEqual({
       canvas: "#111318",
       surface: "#2B303A",
@@ -405,7 +467,7 @@ describe("appStateSchema", () => {
     const result = parseAppState(v3State());
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(9);
+    expect(result.state.schemaVersion).toBe(10);
     expect(result.state.tasks[0]).toMatchObject({
       important: false,
       scheduledFor: null,
@@ -424,7 +486,7 @@ describe("appStateSchema", () => {
     const result = parseAppState(v2State());
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(9);
+    expect(result.state.schemaVersion).toBe(10);
     expect(result.state.settings).toMatchObject({
       colorTheme: "graphite-lime",
       fontSize: 16,
@@ -436,7 +498,7 @@ describe("appStateSchema", () => {
     const result = parseAppState(legacyState(true));
 
     expect(result.status).toBe("migrated");
-    expect(result.state.schemaVersion).toBe(9);
+    expect(result.state.schemaVersion).toBe(10);
     expect(result.state.tasks[0]).toMatchObject({
       id: "task-1",
       done: true,
@@ -554,7 +616,8 @@ describe("appStateSchema", () => {
             important: false,
             childTitles: [],
             deadlinePattern: null,
-            deadlineDisplayMode: "countdown"
+            deadlineDisplayMode: "countdown",
+            timeBlockPattern: null
           },
           nextOccurrenceOn: "2026-07-15",
           activeTaskId: "task-1",
@@ -587,7 +650,8 @@ describe("appStateSchema", () => {
         important: false,
         childTitles: [],
         deadlinePattern: null,
-        deadlineDisplayMode: "countdown"
+        deadlineDisplayMode: "countdown",
+        timeBlockPattern: null
       },
       nextOccurrenceOn: "2026-07-15",
       activeTaskId: "task-1",
@@ -638,7 +702,8 @@ describe("appStateSchema", () => {
             important: false,
             childTitles: [],
             deadlinePattern: null,
-            deadlineDisplayMode: "countdown"
+            deadlineDisplayMode: "countdown",
+            timeBlockPattern: null
           },
           nextOccurrenceOn: "2026-07-14",
           activeTaskId: null,
@@ -697,7 +762,7 @@ describe("localTaskStore", () => {
     await expect(store.load()).resolves.toEqual({ state: fallbackDefaultState(), status: "error" });
   });
 
-  it("saves and loads a v9 app state roundtrip", async () => {
+  it("saves and loads a v10 app state roundtrip", async () => {
     const storage = createMemoryStorage();
     const store = createLocalTaskStore(storage);
     const state: AppState = { ...fallbackDefaultState(), tasks: [currentTask(true)] };
@@ -742,6 +807,30 @@ describe("localTaskStore", () => {
     await store.save(loaded.state);
 
     expect(storage.getItem("desktodo:app-state-v8-backup")).toBe(rawV8);
+  });
+
+  it("keeps a v9 backup before the first calendar-Todo migration save", async () => {
+    const task = currentTask(false) as Record<string, unknown>;
+    delete task.timeBlock;
+    delete task.calendarEventRef;
+    const settings = {
+      ...fallbackDefaultState().settings
+    } as Record<string, unknown>;
+    delete settings.calendarAgendaCollapsed;
+    const rawV9 = JSON.stringify({
+      ...fallbackDefaultState(),
+      schemaVersion: 9,
+      tasks: [task],
+      settings
+    });
+    const storage = createMemoryStorage(rawV9);
+    const store = createLocalTaskStore(storage);
+    const loaded = await store.load();
+
+    expect(loaded.status).toBe("migrated");
+    await store.save(loaded.state);
+
+    expect(storage.getItem("desktodo:app-state-v9-backup")).toBe(rawV9);
   });
 
   it("writes a local migration backup before attempting the upgraded primary state", async () => {
@@ -809,7 +898,7 @@ describe("localTaskStore", () => {
     const loaded = await store.load();
 
     expect(loaded.status).toBe("migrated");
-    expect(loaded.state.schemaVersion).toBe(9);
+    expect(loaded.state.schemaVersion).toBe(10);
     expect(loaded.state.tasks[0].deadlineAt).toBeNull();
 
     await store.save(loaded.state);
@@ -852,7 +941,7 @@ describe("localTaskStore", () => {
     await store.save(loaded.state);
 
     expect(storage.getItem("desktodo:app-state-v1-backup")).toBe(rawLegacy);
-    expect(JSON.parse(storage.getItem("desktodo:app-state") ?? "{}").schemaVersion).toBe(9);
+    expect(JSON.parse(storage.getItem("desktodo:app-state") ?? "{}").schemaVersion).toBe(10);
   });
 
   it("keeps a v2 backup before the first migrated state save", async () => {

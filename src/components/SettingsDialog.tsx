@@ -15,6 +15,8 @@ import { THEME_OPTIONS } from "../settings/themeCatalog";
 import { DialogHeader } from "./DialogHeader";
 import { CustomThemeEditor } from "./CustomThemeEditor";
 import { DataTransferSection } from "./DataTransferSection";
+import type { CalendarIntegration } from "../calendar/hooks/useCalendarIntegration";
+import { CalendarSettingsSection } from "./CalendarSettingsSection";
 
 interface SettingsDialogProps {
   appState?: AppState;
@@ -23,6 +25,7 @@ interface SettingsDialogProps {
   autostart?: AutostartService;
   onBackgroundOpacityPreview?: (percent: number | null) => void;
   onCustomThemePreview?: (colors: CustomThemeColors | null) => void;
+  calendarIntegration?: CalendarIntegration;
 }
 
 export function SettingsDialog({
@@ -31,7 +34,8 @@ export function SettingsDialog({
   dispatch,
   autostart = autostartService,
   onBackgroundOpacityPreview,
-  onCustomThemePreview
+  onCustomThemePreview,
+  calendarIntegration
 }: SettingsDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -350,6 +354,10 @@ export function SettingsDialog({
               />
               {autostartError && <p className="settings-error" role="status">{autostartError}</p>}
             </section>
+
+            {calendarIntegration && (
+              <CalendarSettingsSection calendar={calendarIntegration} isOpen={isOpen} />
+            )}
 
             {appState && <DataTransferSection state={appState} dispatch={dispatch} />}
           </div>

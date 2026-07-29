@@ -31,6 +31,8 @@ function task(): TodoItem {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: []
   };
 }

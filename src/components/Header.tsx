@@ -6,6 +6,7 @@ import { isTauriRuntime } from "../persistence";
 import { WindowControls } from "./WindowControls";
 import { WindowLayerControl } from "./WindowLayerControl";
 import { SettingsDialog } from "./SettingsDialog";
+import type { CalendarIntegration } from "../calendar/hooks/useCalendarIntegration";
 
 interface HeaderProps {
   progressLabel: string;
@@ -22,6 +23,7 @@ interface HeaderProps {
   dispatch: (action: TodoAction) => void;
   onBackgroundOpacityPreview?: (percent: number | null) => void;
   onCustomThemePreview?: (colors: CustomThemeColors | null) => void;
+  calendarIntegration?: CalendarIntegration;
 }
 
 export function Header({
@@ -38,7 +40,8 @@ export function Header({
   appState,
   dispatch,
   onBackgroundOpacityPreview,
-  onCustomThemePreview
+  onCustomThemePreview,
+  calendarIntegration
 }: HeaderProps) {
   return (
     <header className="header" onMouseDown={startHeaderDrag}>
@@ -73,6 +76,7 @@ export function Header({
           dispatch={dispatch}
           onBackgroundOpacityPreview={onBackgroundOpacityPreview}
           onCustomThemePreview={onCustomThemePreview}
+          calendarIntegration={calendarIntegration}
         />
         <WindowControls flush={flushWindowState} />
       </div>

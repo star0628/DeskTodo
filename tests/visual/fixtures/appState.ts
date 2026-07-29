@@ -27,7 +27,8 @@ const defaultSettings: AppSettings = {
   },
   fontSize: 16,
   backgroundOpacityPercent: 90,
-  collapseCompletedByDefault: false
+  collapseCompletedByDefault: false,
+  calendarAgendaCollapsed: false
 };
 
 const standardTasks: TodoItem[] = [
@@ -76,7 +77,7 @@ const standardTasks: TodoItem[] = [
 ];
 
 const standardState: AppState = {
-  schemaVersion: 9,
+  schemaVersion: 10,
   tasks: standardTasks,
   archivedCompletions: [],
   recurrenceSeries: [
@@ -88,7 +89,8 @@ const standardState: AppState = {
         important: false,
         childTitles: [],
         deadlinePattern: null,
-        deadlineDisplayMode: "countdown"
+        deadlineDisplayMode: "countdown",
+        timeBlockPattern: null
       },
       nextOccurrenceOn: "2026-07-14",
       activeTaskId: "recurring-open",
@@ -102,7 +104,7 @@ const standardState: AppState = {
 
 const fixtureStates: Record<VisualFixtureName, AppState> = {
   empty: {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: [],
     archivedCompletions: [],
     recurrenceSeries: [],
@@ -110,7 +112,7 @@ const fixtureStates: Record<VisualFixtureName, AppState> = {
   },
   standard: standardState,
   stress: {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: Array.from({ length: 24 }, (_, index) => {
       const number = index + 1;
       const done = index >= 18;
@@ -206,6 +208,8 @@ function task(overrides: Partial<TodoItem> & Pick<TodoItem, "id" | "title">): To
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: [],
     ...overrides
   };

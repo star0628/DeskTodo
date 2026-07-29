@@ -28,6 +28,11 @@ import {
   isValidDeadlinePattern
 } from "../domain/deadline";
 import { isLocalDateKey, localDateKeyFromIso } from "../utils/date";
+import {
+  isValidTodoTimeBlock,
+  isValidTodoTimeBlockPattern,
+  todoTimeBlockIntersectsDate
+} from "../domain/timeBlock";
 import { LoadStatus } from "./appStateRepository";
 
 export type ParseStatus = Exclude<LoadStatus, "error">;
@@ -54,7 +59,7 @@ interface V3TodoItem extends LegacyTodoItem {
 
 export function fallbackDefaultState(): AppState {
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: [],
     archivedCompletions: [],
     recurrenceSeries: [],
@@ -67,7 +72,8 @@ export function fallbackDefaultState(): AppState {
       customThemeColors: { ...DEFAULT_CUSTOM_THEME_COLORS },
       fontSize: DEFAULT_FONT_SIZE,
       backgroundOpacityPercent: DEFAULT_BACKGROUND_OPACITY,
-      collapseCompletedByDefault: false
+      collapseCompletedByDefault: false,
+      calendarAgendaCollapsed: false
     }
   };
 }
@@ -97,10 +103,17 @@ export function parseAppState(rawValue: unknown): ParseAppStateResult {
     return { state: fallbackDefaultState(), status: "invalid" };
   }
 
-  if (rawValue.schemaVersion === 9) {
+  if (rawValue.schemaVersion === 10) {
     const state = toAppState(rawValue);
     return state
       ? { state, status: "ok" }
+      : { state: fallbackDefaultState(), status: "invalid" };
+  }
+
+  if (rawValue.schemaVersion === 9) {
+    const state = migrateV9AppState(rawValue);
+    return state
+      ? { state, status: "migrated" }
       : { state: fallbackDefaultState(), status: "invalid" };
   }
 
@@ -168,11 +181,11 @@ export function isAppState(value: unknown): value is AppState {
 }
 
 export function isTodoItem(value: unknown): value is TodoItem {
-  return parseParentTodoItem(value, false, false, true) !== null;
+  return parseParentTodoItem(value, false, false, true, false) !== null;
 }
 
 function toAppState(value: unknown): AppState | null {
-  if (!isRecord(value) || value.schemaVersion !== 9) return null;
+  if (!isRecord(value) || value.schemaVersion !== 10) return null;
   if (
     !Array.isArray(value.tasks) ||
     !Array.isArray(value.archivedCompletions) ||
@@ -181,7 +194,9 @@ function toAppState(value: unknown): AppState | null {
     return null;
   }
 
-  const tasks = value.tasks.map((task) => parseParentTodoItem(task, false, false, true));
+  const tasks = value.tasks.map((task) =>
+    parseParentTodoItem(task, false, false, true, false)
+  );
   const archivedCompletions = value.archivedCompletions.map(parseArchivedCompletionRecord);
   const recurrenceSeries = value.recurrenceSeries.map((series) => parseRecurrenceSeries(series));
   const settings = toAppSettings(value.settings);
@@ -195,13 +210,48 @@ function toAppState(value: unknown): AppState | null {
   }
 
   const state: AppState = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: tasks as TodoItem[],
     archivedCompletions: archivedCompletions as ArchivedCompletionRecord[],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
     settings
   };
   return hasValidStateRelationships(state) ? state : null;
+}
+
+function migrateV9AppState(value: Record<string, unknown>): AppState | null {
+  if (
+    !Array.isArray(value.tasks) ||
+    !Array.isArray(value.archivedCompletions) ||
+    !Array.isArray(value.recurrenceSeries)
+  ) {
+    return null;
+  }
+  const tasks = value.tasks.map((task) =>
+    parseParentTodoItem(task, false, false, true, true)
+  );
+  const archivedCompletions = value.archivedCompletions.map(
+    parseArchivedCompletionRecord
+  );
+  const recurrenceSeries = value.recurrenceSeries.map((series) =>
+    parseRecurrenceSeries(series, false, false, true)
+  );
+  const settings = migrateV9AppSettings(value.settings);
+  if (
+    tasks.some(isNull) ||
+    archivedCompletions.some(isNull) ||
+    recurrenceSeries.some(isNull) ||
+    !settings
+  ) {
+    return null;
+  }
+  return finalizeMigratedState({
+    schemaVersion: 10,
+    tasks: tasks as TodoItem[],
+    archivedCompletions: archivedCompletions as ArchivedCompletionRecord[],
+    recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
+    settings
+  });
 }
 
 function migrateV8AppState(value: Record<string, unknown>): AppState | null {
@@ -213,10 +263,14 @@ function migrateV8AppState(value: Record<string, unknown>): AppState | null {
     return null;
   }
 
-  const tasks = value.tasks.map((task) => parseParentTodoItem(task));
+  const tasks = value.tasks.map((task) =>
+    parseParentTodoItem(task, false, false, false, true)
+  );
   const archivedCompletions = value.archivedCompletions.map(parseArchivedCompletionRecord);
-  const recurrenceSeries = value.recurrenceSeries.map((series) => parseRecurrenceSeries(series));
-  const settings = toAppSettings(value.settings);
+  const recurrenceSeries = value.recurrenceSeries.map((series) =>
+    parseRecurrenceSeries(series, false, false, true)
+  );
+  const settings = migrateV9AppSettings(value.settings);
   if (
     tasks.some(isNull) ||
     archivedCompletions.some(isNull) ||
@@ -227,7 +281,7 @@ function migrateV8AppState(value: Record<string, unknown>): AppState | null {
   }
 
   const state: AppState = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: tasks as TodoItem[],
     archivedCompletions: archivedCompletions as ArchivedCompletionRecord[],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
@@ -238,12 +292,16 @@ function migrateV8AppState(value: Record<string, unknown>): AppState | null {
 
 function migrateV7AppState(value: Record<string, unknown>): AppState | null {
   if (!Array.isArray(value.tasks) || !Array.isArray(value.recurrenceSeries)) return null;
-  const tasks = value.tasks.map((task) => parseParentTodoItem(task));
-  const recurrenceSeries = value.recurrenceSeries.map((series) => parseRecurrenceSeries(series));
-  const settings = toAppSettings(value.settings);
+  const tasks = value.tasks.map((task) =>
+    parseParentTodoItem(task, false, false, false, true)
+  );
+  const recurrenceSeries = value.recurrenceSeries.map((series) =>
+    parseRecurrenceSeries(series, false, false, true)
+  );
+  const settings = migrateV9AppSettings(value.settings);
   if (tasks.some(isNull) || recurrenceSeries.some(isNull) || !settings) return null;
   const state: AppState = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: tasks as TodoItem[],
     archivedCompletions: [],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
@@ -254,14 +312,16 @@ function migrateV7AppState(value: Record<string, unknown>): AppState | null {
 
 function migrateV6AppState(value: Record<string, unknown>): AppState | null {
   if (!Array.isArray(value.tasks) || !Array.isArray(value.recurrenceSeries)) return null;
-  const tasks = value.tasks.map((task) => parseParentTodoItem(task, false, true));
-  const recurrenceSeries = value.recurrenceSeries.map((series) =>
-    parseRecurrenceSeries(series, false, true)
+  const tasks = value.tasks.map((task) =>
+    parseParentTodoItem(task, false, true, false, true)
   );
-  const settings = toAppSettings(value.settings);
+  const recurrenceSeries = value.recurrenceSeries.map((series) =>
+    parseRecurrenceSeries(series, false, true, true)
+  );
+  const settings = migrateV9AppSettings(value.settings);
   if (tasks.some(isNull) || recurrenceSeries.some(isNull) || !settings) return null;
   const state: AppState = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: tasks as TodoItem[],
     archivedCompletions: [],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
@@ -272,14 +332,16 @@ function migrateV6AppState(value: Record<string, unknown>): AppState | null {
 
 function migrateV5AppState(value: Record<string, unknown>): AppState | null {
   if (!Array.isArray(value.tasks) || !Array.isArray(value.recurrenceSeries)) return null;
-  const tasks = value.tasks.map((task) => parseParentTodoItem(task, false, true));
+  const tasks = value.tasks.map((task) =>
+    parseParentTodoItem(task, false, true, false, true)
+  );
   const recurrenceSeries = value.recurrenceSeries.map((series) =>
-    parseRecurrenceSeries(series, false, true)
+    parseRecurrenceSeries(series, false, true, true)
   );
   const settings = migrateV5AppSettings(value.settings);
   if (tasks.some(isNull) || recurrenceSeries.some(isNull) || !settings) return null;
   const state: AppState = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: tasks as TodoItem[],
     archivedCompletions: [],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
@@ -292,18 +354,25 @@ function parseParentTodoItem(
   value: unknown,
   allowV4 = false,
   allowMissingDeadlineDisplayMode = false,
-  allowStandaloneSchedule = false
+  allowStandaloneSchedule = false,
+  allowMissingV10Fields = false
 ): TodoItem | null {
   const task = parseTodoItem(
     value,
     allowV4,
     allowMissingDeadlineDisplayMode,
-    allowStandaloneSchedule
+    allowStandaloneSchedule,
+    allowMissingV10Fields
   );
   if (!task || !Array.isArray((value as Record<string, unknown>).children)) return null;
   const children = (value as Record<string, unknown>).children as unknown[];
   const parsedChildren = children.map((child) =>
-    parseChildTodoItem(child, allowV4, allowMissingDeadlineDisplayMode)
+    parseChildTodoItem(
+      child,
+      allowV4,
+      allowMissingDeadlineDisplayMode,
+      allowMissingV10Fields
+    )
   );
   if (parsedChildren.some(isNull)) return null;
   return { ...task, children: parsedChildren as TodoItem[] };
@@ -312,9 +381,16 @@ function parseParentTodoItem(
 function parseChildTodoItem(
   value: unknown,
   allowV4 = false,
-  allowMissingDeadlineDisplayMode = false
+  allowMissingDeadlineDisplayMode = false,
+  allowMissingV10Fields = false
 ): TodoItem | null {
-  const task = parseTodoItem(value, allowV4, allowMissingDeadlineDisplayMode, false);
+  const task = parseTodoItem(
+    value,
+    allowV4,
+    allowMissingDeadlineDisplayMode,
+    false,
+    allowMissingV10Fields
+  );
   const children = isRecord(value) ? value.children : null;
   if (!task || !Array.isArray(children)) return null;
   if (children.length !== 0) return null;
@@ -323,7 +399,9 @@ function parseChildTodoItem(
     task.scheduledFor !== null ||
     task.deadlineAt !== null ||
     task.deadlineDisplayMode !== "countdown" ||
-    task.recurrenceSeriesId !== null
+    task.recurrenceSeriesId !== null ||
+    task.timeBlock !== null ||
+    task.calendarEventRef !== null
   ) {
     return null;
   }
@@ -334,7 +412,8 @@ function parseTodoItem(
   value: unknown,
   allowV4 = false,
   allowMissingDeadlineDisplayMode = false,
-  allowStandaloneSchedule = false
+  allowStandaloneSchedule = false,
+  allowMissingV10Fields = false
 ): TodoItem | null {
   if (!hasBaseTodoItemShape(value)) return null;
   if (!Array.isArray(value.children)) return null;
@@ -356,6 +435,29 @@ function parseTodoItem(
       ? "countdown"
       : value.deadlineDisplayMode;
   if (!isDeadlineDisplayMode(deadlineDisplayMode)) return null;
+  const timeBlock =
+    allowMissingV10Fields && value.timeBlock === undefined ? null : value.timeBlock;
+  if (timeBlock !== null && !isValidTodoTimeBlock(timeBlock)) return null;
+  if (
+    timeBlock !== null &&
+    (value.scheduledFor === null ||
+      !todoTimeBlockIntersectsDate(timeBlock, value.scheduledFor))
+  ) {
+    return null;
+  }
+  const calendarEventRef =
+    allowMissingV10Fields && value.calendarEventRef === undefined
+      ? null
+      : value.calendarEventRef;
+  if (
+    calendarEventRef !== null &&
+    (typeof calendarEventRef !== "string" ||
+      calendarEventRef.length === 0 ||
+      calendarEventRef.length > 512 ||
+      calendarEventRef.includes("\0"))
+  ) {
+    return null;
+  }
 
   if (value.done) {
     if (
@@ -382,6 +484,8 @@ function parseTodoItem(
     deadlineAt: deadlineAt as string | null,
     deadlineDisplayMode,
     recurrenceSeriesId: value.recurrenceSeriesId as string | null,
+    timeBlock,
+    calendarEventRef,
     children: []
   };
 }
@@ -433,7 +537,8 @@ function parseArchivedCompletionRecord(value: unknown): ArchivedCompletionRecord
 function parseRecurrenceSeries(
   value: unknown,
   allowV4 = false,
-  allowMissingDeadlineDisplayMode = false
+  allowMissingDeadlineDisplayMode = false,
+  allowMissingV10Fields = false
 ): RecurrenceSeries | null {
   if (!isRecord(value)) return null;
   if (
@@ -453,7 +558,8 @@ function parseRecurrenceSeries(
   const template = parseRecurrenceTemplate(
     value.template,
     allowV4,
-    allowMissingDeadlineDisplayMode
+    allowMissingDeadlineDisplayMode,
+    allowMissingV10Fields
   );
   if (!rule || !template || !isOccurrenceDate(rule, value.nextOccurrenceOn)) return null;
   if (!value.enabled && value.activeTaskId !== null) return null;
@@ -482,7 +588,8 @@ function parseRecurrenceRule(value: unknown): RecurrenceRule | null {
 function parseRecurrenceTemplate(
   value: unknown,
   allowV4 = false,
-  allowMissingDeadlineDisplayMode = false
+  allowMissingDeadlineDisplayMode = false,
+  allowMissingV10Fields = false
 ): RecurrenceSeries["template"] | null {
   if (!isRecord(value)) return null;
   if (!isNormalizedTitle(value.title) || typeof value.important !== "boolean") return null;
@@ -495,19 +602,35 @@ function parseRecurrenceTemplate(
       ? "countdown"
       : value.deadlineDisplayMode;
   if (!isDeadlineDisplayMode(deadlineDisplayMode)) return null;
+  const timeBlockPattern =
+    allowMissingV10Fields && value.timeBlockPattern === undefined
+      ? null
+      : value.timeBlockPattern;
+  if (
+    timeBlockPattern !== null &&
+    !isValidTodoTimeBlockPattern(timeBlockPattern)
+  ) {
+    return null;
+  }
   return {
     title: value.title,
     important: value.important,
     childTitles: [...value.childTitles],
     deadlinePattern,
-    deadlineDisplayMode
+    deadlineDisplayMode,
+    timeBlockPattern
   };
 }
 
 function hasValidStateRelationships(state: AppState): boolean {
   const taskIds = new Set<string>();
+  const calendarEventRefs = new Set<string>();
   for (const task of state.tasks) {
     if (taskIds.has(task.id)) return false;
+    if (task.calendarEventRef !== null) {
+      if (calendarEventRefs.has(task.calendarEventRef)) return false;
+      calendarEventRefs.add(task.calendarEventRef);
+    }
     taskIds.add(task.id);
     for (const child of task.children) {
       if (taskIds.has(child.id)) return false;
@@ -557,14 +680,16 @@ function hasValidStateRelationships(state: AppState): boolean {
 
 function migrateV4AppState(value: Record<string, unknown>): AppState | null {
   if (!Array.isArray(value.tasks) || !Array.isArray(value.recurrenceSeries)) return null;
-  const tasks = value.tasks.map((task) => parseParentTodoItem(task, true, true));
+  const tasks = value.tasks.map((task) =>
+    parseParentTodoItem(task, true, true, false, true)
+  );
   const recurrenceSeries = value.recurrenceSeries.map((series) =>
-    parseRecurrenceSeries(series, true, true)
+    parseRecurrenceSeries(series, true, true, true)
   );
   const settings = migrateV5AppSettings(value.settings);
   if (tasks.some(isNull) || recurrenceSeries.some(isNull) || !settings) return null;
   const state: AppState = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: tasks as TodoItem[],
     archivedCompletions: [],
     recurrenceSeries: recurrenceSeries as RecurrenceSeries[],
@@ -578,7 +703,7 @@ function migrateV3AppState(value: Record<string, unknown>): AppState | null {
   const settings = migrateV3AppSettings(value.settings);
   if (!settings) return null;
   return finalizeMigratedState({
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: value.tasks.map(migrateV3TodoItem),
     archivedCompletions: [],
     recurrenceSeries: [],
@@ -591,7 +716,7 @@ function migrateV2AppState(value: Record<string, unknown>): AppState | null {
   const settings = migrateLegacyAppSettings(value.settings);
   if (!settings) return null;
   return finalizeMigratedState({
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: value.tasks.map(migrateV3TodoItem),
     archivedCompletions: [],
     recurrenceSeries: [],
@@ -606,7 +731,7 @@ function migrateLegacyAppState(value: Record<string, unknown>): AppState | null 
   const tasks = value.tasks.map(migrateLegacyTodoItem);
   if (tasks.some(isNull)) return null;
   return finalizeMigratedState({
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks: tasks as TodoItem[],
     archivedCompletions: [],
     recurrenceSeries: [],
@@ -634,6 +759,8 @@ function migrateV3TodoItem(value: V3TodoItem): TodoItem {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: value.children.map(migrateV3TodoItem)
   };
 }
@@ -656,6 +783,8 @@ function migrateLegacyTodoItem(value: LegacyTodoItem): TodoItem | null {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: children as TodoItem[]
   };
 }
@@ -712,7 +841,26 @@ function hasBaseTodoItemShape(value: unknown): value is Record<string, unknown> 
 }
 
 function toAppSettings(value: unknown): AppSettings | null {
-  const base = parseBaseSettings(value);
+  const base = parseBaseSettings(value, false);
+  if (
+    !base ||
+    !isValidBackgroundOpacity((value as Record<string, unknown>).backgroundOpacityPercent) ||
+    !isCustomThemeColors((value as Record<string, unknown>).customThemeColors)
+  ) {
+    return null;
+  }
+  const customThemeColors = (value as Record<string, unknown>)
+    .customThemeColors as CustomThemeColors;
+  return {
+    ...base,
+    theme: base.colorTheme === "custom" ? getColorScheme(customThemeColors.canvas) : base.theme,
+    backgroundOpacityPercent: (value as Record<string, unknown>).backgroundOpacityPercent as number,
+    customThemeColors
+  };
+}
+
+function migrateV9AppSettings(value: unknown): AppSettings | null {
+  const base = parseBaseSettings(value, true);
   if (
     !base ||
     !isValidBackgroundOpacity((value as Record<string, unknown>).backgroundOpacityPercent) ||
@@ -731,7 +879,7 @@ function toAppSettings(value: unknown): AppSettings | null {
 }
 
 function migrateV5AppSettings(value: unknown): AppSettings | null {
-  const base = parseBaseSettings(value);
+  const base = parseBaseSettings(value, true);
   if (
     !base ||
     !isValidBackgroundOpacity((value as Record<string, unknown>).backgroundOpacityPercent)
@@ -746,7 +894,7 @@ function migrateV5AppSettings(value: unknown): AppSettings | null {
 }
 
 function migrateV3AppSettings(value: unknown): AppSettings | null {
-  const base = parseBaseSettings(value);
+  const base = parseBaseSettings(value, true);
   if (!base) return null;
   return {
     ...base,
@@ -756,7 +904,8 @@ function migrateV3AppSettings(value: unknown): AppSettings | null {
 }
 
 function parseBaseSettings(
-  value: unknown
+  value: unknown,
+  allowMissingCalendarCollapse = false
 ): Omit<AppSettings, "backgroundOpacityPercent" | "customThemeColors"> | null {
   if (!isRecord(value)) return null;
   if (typeof value.compactMode !== "boolean") return null;
@@ -765,6 +914,11 @@ function parseBaseSettings(
   const colorTheme = parseColorTheme(value.colorTheme);
   if (!windowLayerMode || !colorTheme || !isValidFontSize(value.fontSize)) return null;
   if (typeof value.collapseCompletedByDefault !== "boolean") return null;
+  const calendarAgendaCollapsed =
+    allowMissingCalendarCollapse && value.calendarAgendaCollapsed === undefined
+      ? false
+      : value.calendarAgendaCollapsed;
+  if (typeof calendarAgendaCollapsed !== "boolean") return null;
   return {
     alwaysOnTop: windowLayerMode === "alwaysOnTop",
     compactMode: value.compactMode,
@@ -772,7 +926,8 @@ function parseBaseSettings(
     windowLayerMode,
     colorTheme,
     fontSize: value.fontSize,
-    collapseCompletedByDefault: value.collapseCompletedByDefault
+    collapseCompletedByDefault: value.collapseCompletedByDefault,
+    calendarAgendaCollapsed
   };
 }
 
@@ -791,7 +946,8 @@ function migrateLegacyAppSettings(value: unknown): AppSettings | null {
     customThemeColors: { ...DEFAULT_CUSTOM_THEME_COLORS },
     fontSize: DEFAULT_FONT_SIZE,
     backgroundOpacityPercent: DEFAULT_BACKGROUND_OPACITY,
-    collapseCompletedByDefault: false
+    collapseCompletedByDefault: false,
+    calendarAgendaCollapsed: false
   };
 }
 

@@ -108,6 +108,7 @@ describe("ScheduleControl", () => {
     expect(onChange).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledWith({
       scheduledFor: null,
+      timeBlock: null,
       deadlineAt: localDeadlineToIso("2026-07-14", "22:00"),
       deadlineDisplayMode: "countdown",
       rule: { kind: "daily" }
@@ -147,6 +148,7 @@ describe("ScheduleControl", () => {
 
     expect(onChange).toHaveBeenCalledWith({
       scheduledFor: "2026-07-15",
+      timeBlock: null,
       deadlineAt: null,
       deadlineDisplayMode: "countdown",
       rule: null
@@ -173,6 +175,7 @@ describe("ScheduleControl", () => {
 
     expect(onChange).toHaveBeenCalledWith({
       scheduledFor: null,
+      timeBlock: null,
       deadlineAt: null,
       deadlineDisplayMode: "countdown",
       rule: null
@@ -224,6 +227,7 @@ describe("ScheduleControl", () => {
     expect(onChange).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledWith({
       scheduledFor: null,
+      timeBlock: null,
       deadlineAt,
       deadlineDisplayMode: "dateTime",
       rule: null
@@ -284,6 +288,7 @@ describe("ScheduleControl", () => {
 
     expect(onChange).toHaveBeenCalledWith({
       scheduledFor: "2026-07-14",
+      timeBlock: null,
       deadlineAt: null,
       deadlineDisplayMode: "countdown",
       rule: { kind: "weekdays" }
@@ -312,6 +317,7 @@ describe("ScheduleControl", () => {
     await user.click(screen.getByRole("button", { name: "完成" }));
     expect(onChange).toHaveBeenCalledWith({
       scheduledFor: null,
+      timeBlock: null,
       deadlineAt: localDeadlineToIso("2026-08-01", "09:00"),
       deadlineDisplayMode: "countdown",
       rule: null
@@ -336,6 +342,49 @@ describe("ScheduleControl", () => {
     await user.click(screen.getByRole("button", { name: "一" }));
     expect(screen.getByText("每周重复至少选择一天。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成" })).toBeDisabled();
+  });
+
+  it("edits an imported Todo time block without turning it into a deadline", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <ScheduleControl
+        scheduledFor="2026-07-14"
+        timeBlock={{
+          kind: "timed",
+          startsAt: localDeadlineToIso("2026-07-14", "19:00")!,
+          endsAt: localDeadlineToIso("2026-07-14", "20:00")!
+        }}
+        deadlineAt={null}
+        deadlineDisplayMode="countdown"
+        rule={null}
+        today="2026-07-14"
+        onChange={onChange}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /19:00–20:00/ }));
+    expect(screen.getByRole("tab", { name: "时间段" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    await user.click(screen.getByRole("radio", { name: /结束/ }));
+    fireEvent.change(screen.getByLabelText("结束时间"), {
+      target: { value: "20:30" }
+    });
+    await user.click(screen.getByRole("button", { name: "完成" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      scheduledFor: "2026-07-14",
+      timeBlock: {
+        kind: "timed",
+        startsAt: localDeadlineToIso("2026-07-14", "19:00"),
+        endsAt: localDeadlineToIso("2026-07-14", "20:30")
+      },
+      deadlineAt: null,
+      deadlineDisplayMode: "countdown",
+      rule: null
+    });
   });
 });
 

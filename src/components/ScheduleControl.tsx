@@ -18,8 +18,14 @@ import {
   DeadlineDisplayMode,
   LocalDateKey,
   RecurrenceRule,
+  TodoTimeBlock,
   Weekday
 } from "../domain/todoTypes";
+import {
+  createTodoTimeBlockPattern,
+  isValidTodoTimeBlock,
+  todoTimeBlockIntersectsDate
+} from "../domain/timeBlock";
 import {
   addLocalDays,
   formatLocalDateLabel,
@@ -27,9 +33,11 @@ import {
   toLocalDateKey
 } from "../utils/date";
 import { DialogHeader } from "./DialogHeader";
+import { TimeBlockEditor } from "./TimeBlockEditor";
 
 interface ScheduleControlProps {
   scheduledFor: LocalDateKey | null;
+  timeBlock?: TodoTimeBlock | null;
   deadlineAt: string | null;
   deadlineDisplayMode: DeadlineDisplayMode;
   rule: RecurrenceRule | null;
@@ -37,17 +45,20 @@ interface ScheduleControlProps {
   disabled?: boolean;
   onChange: (value: {
     scheduledFor: LocalDateKey | null;
+    timeBlock: TodoTimeBlock | null;
     deadlineAt: string | null;
     deadlineDisplayMode: DeadlineDisplayMode;
     rule: RecurrenceRule | null;
   }) => void;
 }
 
-type ScheduleTab = "planned" | "deadline" | "recurrence";
+type ScheduleTab = "planned" | "timeBlock" | "deadline" | "recurrence";
 type DraftKind = "none" | RecurrenceRule["kind"];
+type DraftTimeBlockKind = "none" | TodoTimeBlock["kind"];
 
 export function ScheduleControl({
   scheduledFor,
+  timeBlock = null,
   deadlineAt,
   deadlineDisplayMode,
   rule,
@@ -67,6 +78,21 @@ export function ScheduleControl({
     useState<LocalDateKey | null>(scheduledFor);
   const [plannedCalendarMonth, setPlannedCalendarMonth] = useState(() =>
     localDateKeyToDate(scheduledFor ?? today)
+  );
+  const initialTimeBlock = getInitialTimeBlock(timeBlock, scheduledFor ?? today);
+  const [draftTimeBlockKind, setDraftTimeBlockKind] =
+    useState<DraftTimeBlockKind>(initialTimeBlock.kind);
+  const [timeBlockAllDayStart, setTimeBlockAllDayStart] = useState(
+    initialTimeBlock.allDayStart
+  );
+  const [timeBlockAllDayEnd, setTimeBlockAllDayEnd] = useState(
+    initialTimeBlock.allDayEnd
+  );
+  const [timeBlockTimedStart, setTimeBlockTimedStart] = useState(
+    initialTimeBlock.timedStart
+  );
+  const [timeBlockTimedEnd, setTimeBlockTimedEnd] = useState(
+    initialTimeBlock.timedEnd
   );
   const [hasDeadline, setHasDeadline] = useState(deadlineAt !== null);
   const initialDeadline = getInitialDeadline(deadlineAt, today);
@@ -98,24 +124,66 @@ export function ScheduleControl({
   const draftDeadlineAt = hasDeadline
     ? localDeadlineToIso(deadlineDate, deadlineTime)
     : null;
+  const draftTimeBlock = useMemo<TodoTimeBlock | null>(() => {
+    if (draftTimeBlockKind === "none") return null;
+    if (draftTimeBlockKind === "allDay") {
+      return {
+        kind: "allDay",
+        startOn: timeBlockAllDayStart,
+        endExclusiveOn: addLocalDays(timeBlockAllDayEnd, 1)
+      };
+    }
+    const startsAt = dateTimeLocalInputToIso(timeBlockTimedStart);
+    const endsAt = dateTimeLocalInputToIso(timeBlockTimedEnd);
+    return startsAt && endsAt ? { kind: "timed", startsAt, endsAt } : null;
+  }, [
+    draftTimeBlockKind,
+    timeBlockAllDayEnd,
+    timeBlockAllDayStart,
+    timeBlockTimedEnd,
+    timeBlockTimedStart
+  ]);
+  const timedStartParts = dateTimeLocalInputParts(timeBlockTimedStart) ?? {
+    date: draftScheduledFor ?? today,
+    time: "09:00"
+  };
+  const timedEndParts = dateTimeLocalInputParts(timeBlockTimedEnd) ?? {
+    date: draftScheduledFor ?? today,
+    time: "10:00"
+  };
   const error = getScheduleError(
     draftDeadlineAt,
     hasDeadline,
     draftRule,
     draftScheduledFor,
+    draftTimeBlock,
+    draftTimeBlockKind,
     today
   );
-  const hasSchedule = scheduledFor !== null || deadlineAt !== null || rule !== null;
-  const label = getScheduleLabel(scheduledFor, deadlineAt, rule, today);
+  const hasSchedule =
+    scheduledFor !== null || timeBlock !== null || deadlineAt !== null || rule !== null;
+  const label = getScheduleLabel(scheduledFor, timeBlock, deadlineAt, rule, today);
   const isPlannedDateLocked = rule !== null;
 
   function openDialog() {
     const initial = getInitialDeadline(deadlineAt, today);
+    const initialBlock = getInitialTimeBlock(timeBlock, scheduledFor ?? today);
     setActiveTab(
-      scheduledFor !== null ? "planned" : deadlineAt !== null || rule === null ? "deadline" : "recurrence"
+      timeBlock !== null
+        ? "timeBlock"
+        : scheduledFor !== null
+          ? "planned"
+          : deadlineAt !== null || rule === null
+            ? "deadline"
+            : "recurrence"
     );
     setDraftScheduledFor(scheduledFor);
     setPlannedCalendarMonth(localDateKeyToDate(scheduledFor ?? today));
+    setDraftTimeBlockKind(initialBlock.kind);
+    setTimeBlockAllDayStart(initialBlock.allDayStart);
+    setTimeBlockAllDayEnd(initialBlock.allDayEnd);
+    setTimeBlockTimedStart(initialBlock.timedStart);
+    setTimeBlockTimedEnd(initialBlock.timedEnd);
     setHasDeadline(deadlineAt !== null);
     setDeadlineDate(initial.date);
     setDeadlineTime(initial.time);
@@ -141,12 +209,14 @@ export function ScheduleControl({
     if (nextDeadlineAt === null && hasDeadline) return;
     if (
       draftScheduledFor !== scheduledFor ||
+      !todoTimeBlocksEqual(timeBlock, draftTimeBlock) ||
       nextDeadlineAt !== deadlineAt ||
       draftDisplayMode !== deadlineDisplayMode ||
       !recurrenceValuesEqual(rule, draftRule)
     ) {
       onChange({
         scheduledFor: draftScheduledFor,
+        timeBlock: draftTimeBlock,
         deadlineAt: nextDeadlineAt,
         deadlineDisplayMode: draftDisplayMode,
         rule: draftRule
@@ -176,9 +246,9 @@ export function ScheduleControl({
         ref={triggerRef}
         type="button"
         className={`icon-button schedule-trigger recurrence-trigger${hasSchedule ? " active" : ""}`}
-        aria-label={`设置计划日期、截止时间或重复，当前${label}`}
+        aria-label={`设置计划日期、时间段、截止时间或重复，当前${label}`}
         aria-pressed={hasSchedule}
-        title={hasSchedule ? label : "设置计划日期、截止时间或重复"}
+        title={hasSchedule ? label : "设置计划日期、时间段、截止时间或重复"}
         disabled={disabled}
         onClick={openDialog}
       >
@@ -201,7 +271,7 @@ export function ScheduleControl({
           <DialogHeader
             titleId={titleId}
             title="时间安排"
-            subtitle="计划日期、截止时间与重复规则"
+            subtitle="计划日期、时间段、截止时间与重复规则"
             closeLabel="关闭时间安排"
             onClose={closeDialog}
           />
@@ -214,6 +284,14 @@ export function ScheduleControl({
               onClick={() => setActiveTab("planned")}
             >
               计划日期
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "timeBlock"}
+              onClick={() => setActiveTab("timeBlock")}
+            >
+              时间段
             </button>
             <button
               type="button"
@@ -311,6 +389,83 @@ export function ScheduleControl({
                     }}
                   />
                 </div>
+              </section>
+            ) : activeTab === "timeBlock" ? (
+              <section className="schedule-tab-panel" role="tabpanel" aria-label="时间段">
+                <fieldset className="deadline-display-field">
+                  <legend>任务时间</legend>
+                  <div className="deadline-display-options schedule-time-kind-options">
+                    <label>
+                      <input
+                        type="radio"
+                        name={`schedule-time-kind-${instanceId}`}
+                        checked={draftTimeBlockKind === "none"}
+                        onChange={() => setDraftTimeBlockKind("none")}
+                      />
+                      <span>无</span>
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name={`schedule-time-kind-${instanceId}`}
+                        checked={draftTimeBlockKind === "allDay"}
+                        onChange={() => setDraftTimeBlockKind("allDay")}
+                      />
+                      <span>全天</span>
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name={`schedule-time-kind-${instanceId}`}
+                        checked={draftTimeBlockKind === "timed"}
+                        onChange={() => setDraftTimeBlockKind("timed")}
+                      />
+                      <span>指定时间</span>
+                    </label>
+                  </div>
+                </fieldset>
+                {draftTimeBlockKind !== "none" && (
+                  <TimeBlockEditor
+                    kind={draftTimeBlockKind}
+                    startDate={
+                      draftTimeBlockKind === "allDay"
+                        ? timeBlockAllDayStart
+                        : timedStartParts.date
+                    }
+                    endDate={
+                      draftTimeBlockKind === "allDay"
+                        ? timeBlockAllDayEnd
+                        : timedEndParts.date
+                    }
+                    startTime={timedStartParts.time}
+                    endTime={timedEndParts.time}
+                    onStartDateChange={(date) => {
+                      if (draftTimeBlockKind === "allDay") {
+                        setTimeBlockAllDayStart(date);
+                      } else {
+                        setTimeBlockTimedStart(`${date}T${timedStartParts.time}`);
+                      }
+                    }}
+                    onEndDateChange={(date) => {
+                      if (draftTimeBlockKind === "allDay") {
+                        setTimeBlockAllDayEnd(date);
+                      } else {
+                        setTimeBlockTimedEnd(`${date}T${timedEndParts.time}`);
+                      }
+                    }}
+                    onStartTimeChange={(time) =>
+                      setTimeBlockTimedStart(`${timedStartParts.date}T${time}`)
+                    }
+                    onEndTimeChange={(time) =>
+                      setTimeBlockTimedEnd(`${timedEndParts.date}T${time}`)
+                    }
+                  />
+                )}
+                {draftTimeBlockKind !== "none" && (
+                  <p className="schedule-planned-note">
+                    时间段必须覆盖 Day Todo 的计划日期；如需改到其他日期，请同时调整“计划日期”。
+                  </p>
+                )}
               </section>
             ) : activeTab === "deadline" ? (
               <section className="schedule-tab-panel" role="tabpanel" aria-label="截止时间">
@@ -510,22 +665,79 @@ function getInitialDeadline(
   };
 }
 
+interface InitialTimeBlock {
+  kind: DraftTimeBlockKind;
+  allDayStart: LocalDateKey;
+  allDayEnd: LocalDateKey;
+  timedStart: string;
+  timedEnd: string;
+}
+
+function getInitialTimeBlock(
+  timeBlock: TodoTimeBlock | null,
+  baseDate: LocalDateKey
+): InitialTimeBlock {
+  if (timeBlock?.kind === "allDay") {
+    return {
+      kind: "allDay",
+      allDayStart: timeBlock.startOn,
+      allDayEnd: addLocalDays(timeBlock.endExclusiveOn, -1),
+      timedStart: `${baseDate}T09:00`,
+      timedEnd: `${baseDate}T10:00`
+    };
+  }
+  if (timeBlock?.kind === "timed") {
+    return {
+      kind: "timed",
+      allDayStart: baseDate,
+      allDayEnd: baseDate,
+      timedStart: toDateTimeLocalInput(timeBlock.startsAt),
+      timedEnd: toDateTimeLocalInput(timeBlock.endsAt)
+    };
+  }
+  return {
+    kind: "none",
+    allDayStart: baseDate,
+    allDayEnd: baseDate,
+    timedStart: `${baseDate}T09:00`,
+    timedEnd: `${baseDate}T10:00`
+  };
+}
+
 function getScheduleError(
   deadlineAt: string | null,
   hasDeadline: boolean,
   rule: RecurrenceRule | null,
   scheduledFor: LocalDateKey | null,
+  timeBlock: TodoTimeBlock | null,
+  timeBlockKind: DraftTimeBlockKind,
   today: LocalDateKey
 ): string | null {
   if (scheduledFor !== null && scheduledFor < today) {
     return "计划日期不能早于今天。";
   }
   if (hasDeadline && deadlineAt === null) return "请选择有效的日期和时间。";
+  if (timeBlockKind !== "none" && (!timeBlock || !isValidTodoTimeBlock(timeBlock))) {
+    return "请输入有效的开始和结束时间。";
+  }
+  if (
+    timeBlock &&
+    (scheduledFor === null || !todoTimeBlockIntersectsDate(timeBlock, scheduledFor))
+  ) {
+    return "时间段必须覆盖 Day Todo 的计划日期。";
+  }
   if (rule?.kind === "weekly" && rule.weekdays.length === 0) {
     return "每周重复至少选择一天。";
   }
   if (rule && deadlineAt && !createDeadlinePattern(deadlineAt, scheduledFor ?? today)) {
     return "重复任务的截止时间需在本次任务之后 366 天内。";
+  }
+  if (
+    rule &&
+    timeBlock &&
+    !createTodoTimeBlockPattern(timeBlock, scheduledFor ?? today)
+  ) {
+    return "重复任务的时间段需在本次任务前后 366 天内。";
   }
   return null;
 }
@@ -540,6 +752,7 @@ function recurrenceValuesEqual(
 
 function getScheduleLabel(
   scheduledFor: LocalDateKey | null,
+  timeBlock: TodoTimeBlock | null,
   deadlineAt: string | null,
   rule: RecurrenceRule | null,
   today: LocalDateKey
@@ -548,10 +761,78 @@ function getScheduleLabel(
   if (scheduledFor) {
     parts.push(`计划 ${formatLocalDateLabel(scheduledFor, today)}`);
   }
+  if (timeBlock) parts.push(formatTimeBlockLabel(timeBlock));
   if (deadlineAt) {
     const display = getDeadlineDisplay(deadlineAt, Date.now(), false);
     if (display) parts.push(`截止 ${display.dateLabel}`);
   }
   if (rule) parts.push(`重复 ${getRecurrenceLabel(rule)}`);
   return parts.length > 0 ? parts.join("，") : "未设置";
+}
+
+export function formatTimeBlockLabel(timeBlock: TodoTimeBlock): string {
+  if (timeBlock.kind === "allDay") {
+    const inclusiveEnd = addLocalDays(timeBlock.endExclusiveOn, -1);
+    return timeBlock.startOn === inclusiveEnd
+      ? "全天"
+      : `${timeBlock.startOn} 至 ${inclusiveEnd}`;
+  }
+  const start = new Date(timeBlock.startsAt);
+  const end = new Date(timeBlock.endsAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "时间未设置";
+  const formatter = new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+  if (toLocalDateKey(start) === toLocalDateKey(end)) {
+    return `${formatter.format(start)}–${formatter.format(end)}`;
+  }
+  return `${toLocalDateKey(start)} ${formatter.format(start)}–${toLocalDateKey(
+    end
+  )} ${formatter.format(end)}`;
+}
+
+function todoTimeBlocksEqual(
+  left: TodoTimeBlock | null,
+  right: TodoTimeBlock | null
+): boolean {
+  if (left === null || right === null) return left === right;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "allDay" && right.kind === "allDay") {
+    return (
+      left.startOn === right.startOn &&
+      left.endExclusiveOn === right.endExclusiveOn
+    );
+  }
+  return (
+    left.kind === "timed" &&
+    right.kind === "timed" &&
+    left.startsAt === right.startsAt &&
+    left.endsAt === right.endsAt
+  );
+}
+
+function toDateTimeLocalInput(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${toLocalDateKey(date)}T${twoDigits(date.getHours())}:${twoDigits(
+    date.getMinutes()
+  )}`;
+}
+
+function dateTimeLocalInputToIso(value: string): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(value);
+  return match ? localDeadlineToIso(match[1], match[2]) : null;
+}
+
+function dateTimeLocalInputParts(
+  value: string
+): { date: LocalDateKey; time: string } | null {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(value);
+  return match ? { date: match[1] as LocalDateKey, time: match[2] } : null;
+}
+
+function twoDigits(value: number): string {
+  return String(value).padStart(2, "0");
 }

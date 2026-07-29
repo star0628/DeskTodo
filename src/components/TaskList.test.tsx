@@ -417,6 +417,8 @@ function task(title: string, done: boolean): TodoItem {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: []
   };
 }

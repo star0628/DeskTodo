@@ -30,6 +30,8 @@ function completedTask(
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children,
     ...overrides
   };
@@ -119,7 +121,8 @@ describe("history deletion", () => {
         important: false,
         childTitles: [],
         deadlinePattern: null,
-        deadlineDisplayMode: "countdown"
+        deadlineDisplayMode: "countdown",
+        timeBlockPattern: null
       },
       nextOccurrenceOn: "2026-07-14",
       activeTaskId: current.id,

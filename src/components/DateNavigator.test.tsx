@@ -115,6 +115,22 @@ describe("DateNavigator", () => {
     expect(screen.getByRole("button", { name: /7月14日.*计划2项/ })).toBeInTheDocument();
   });
 
+  it("adds read-only calendar counts to day labels", async () => {
+    const user = userEvent.setup();
+    render(
+      <DateNavigator
+        selectedDate="2026-07-13"
+        today="2026-07-13"
+        calendarEventCounts={new Map([["2026-07-14", 2]])}
+        onChange={() => undefined}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /选择日期/ }));
+
+    expect(screen.getByRole("button", { name: /7月14日.*日程2项/ })).toBeInTheDocument();
+  });
+
   it("allows previous and next navigation across today", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

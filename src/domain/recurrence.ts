@@ -10,6 +10,10 @@ import {
 import { addLocalDays, localDateKeyToDate } from "../utils/date";
 import { createId } from "../utils/ids";
 import { createDeadlinePattern, materializeDeadlineAt } from "./deadline";
+import {
+  createTodoTimeBlockPattern,
+  materializeTodoTimeBlock
+} from "./timeBlock";
 
 export const WEEKDAY_ORDER: readonly Weekday[] = [1, 2, 3, 4, 5, 6, 0];
 
@@ -94,7 +98,10 @@ export function createRecurrenceTemplate(
     important: task.important,
     childTitles: task.children.map((child) => child.title),
     deadlinePattern: baseDate ? createDeadlinePattern(task.deadlineAt, baseDate) : null,
-    deadlineDisplayMode: task.deadlineDisplayMode
+    deadlineDisplayMode: task.deadlineDisplayMode,
+    timeBlockPattern: baseDate
+      ? createTodoTimeBlockPattern(task.timeBlock, baseDate)
+      : null
   };
 }
 
@@ -170,8 +177,13 @@ function createRecurringOccurrence(
     completedOn: null,
     important: series.template.important,
     scheduledFor,
+    timeBlock: materializeTodoTimeBlock(
+      series.template.timeBlockPattern,
+      scheduledFor
+    ),
     deadlineAt: materializeDeadlineAt(series.template.deadlinePattern, scheduledFor),
     deadlineDisplayMode: series.template.deadlineDisplayMode,
+    calendarEventRef: null,
     recurrenceSeriesId: series.id,
     children: series.template.childTitles.map((title) => ({
       id: nextId(),
@@ -183,8 +195,10 @@ function createRecurringOccurrence(
       completedOn: null,
       important: false,
       scheduledFor: null,
+      timeBlock: null,
       deadlineAt: null,
       deadlineDisplayMode: "countdown",
+      calendarEventRef: null,
       recurrenceSeriesId: null,
       children: []
     }))

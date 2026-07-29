@@ -11,6 +11,7 @@ interface CalendarPopoverProps {
   today: LocalDateKey;
   completionCounts: ReadonlyMap<LocalDateKey, number>;
   scheduledCounts: ReadonlyMap<LocalDateKey, number>;
+  calendarEventCounts: ReadonlyMap<LocalDateKey, number>;
   onSelect: (date: LocalDateKey) => void;
   onClose: () => void;
 }
@@ -21,6 +22,7 @@ export function CalendarPopover({
   today,
   completionCounts,
   scheduledCounts,
+  calendarEventCounts,
   onSelect,
   onClose
 }: CalendarPopoverProps) {
@@ -35,6 +37,10 @@ export function CalendarPopover({
   const scheduledDates = useMemo(
     () => Array.from(scheduledCounts.keys(), localDateKeyToDate),
     [scheduledCounts]
+  );
+  const calendarEventDates = useMemo(
+    () => Array.from(calendarEventCounts.keys(), localDateKeyToDate),
+    [calendarEventCounts]
   );
 
   useEffect(() => {
@@ -88,10 +94,15 @@ export function CalendarPopover({
         showOutsideDays
         fixedWeeks
         autoFocus
-        modifiers={{ hasCompletions: completedDates, hasScheduledTasks: scheduledDates }}
+        modifiers={{
+          hasCompletions: completedDates,
+          hasScheduledTasks: scheduledDates,
+          hasCalendarEvents: calendarEventDates
+        }}
         modifiersClassNames={{
           hasCompletions: "calendar-day-has-completions",
-          hasScheduledTasks: "calendar-day-has-scheduled-tasks"
+          hasScheduledTasks: "calendar-day-has-scheduled-tasks",
+          hasCalendarEvents: "calendar-day-has-calendar-events"
         }}
         formatters={{
           formatCaption: (date) => `${date.getFullYear()}年${date.getMonth() + 1}月`,
@@ -103,7 +114,8 @@ export function CalendarPopover({
               date,
               modifiers,
               completionCounts.get(toLocalDateKey(date)) ?? 0,
-              scheduledCounts.get(toLocalDateKey(date)) ?? 0
+              scheduledCounts.get(toLocalDateKey(date)) ?? 0,
+              calendarEventCounts.get(toLocalDateKey(date)) ?? 0
             )
         }}
         onSelect={(date) => {
@@ -115,6 +127,7 @@ export function CalendarPopover({
       <div className="calendar-legend" aria-hidden="true">
         <span><i className="calendar-legend-completed" />已完成</span>
         <span><i className="calendar-legend-scheduled" />已计划</span>
+        <span><i className="calendar-legend-events" />日程</span>
       </div>
     </dialog>
   );
@@ -124,7 +137,8 @@ export function formatCalendarDayLabel(
   date: Date,
   modifiers: Modifiers,
   completionCount: number,
-  scheduledCount = 0
+  scheduledCount = 0,
+  calendarEventCount = 0
 ): string {
   const dateLabel = new Intl.DateTimeFormat("zh-CN", {
     month: "long",
@@ -135,5 +149,6 @@ export function formatCalendarDayLabel(
   if (modifiers.selected) parts.push("已选择");
   if (completionCount > 0) parts.push(`完成${completionCount}项`);
   if (scheduledCount > 0) parts.push(`计划${scheduledCount}项`);
+  if (calendarEventCount > 0) parts.push(`日程${calendarEventCount}项`);
   return parts.join("，");
 }

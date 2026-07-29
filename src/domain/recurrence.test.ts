@@ -145,7 +145,8 @@ describe("materializeDueRecurrences", () => {
         important: true,
         childTitles: [],
         deadlinePattern: { dayOffset: 0, localTime: "22:00" },
-        deadlineDisplayMode: "dateTime"
+        deadlineDisplayMode: "dateTime",
+        timeBlockPattern: null
       }
     });
     const next = materializeDueRecurrences(stateWithSeries(currentSeries), "2026-07-13", {
@@ -180,7 +181,8 @@ function series(overrides: Partial<RecurrenceSeries> = {}): RecurrenceSeries {
       important: true,
       childTitles: ["整理数据", "发送邮件"],
       deadlinePattern: null,
-      deadlineDisplayMode: "countdown"
+      deadlineDisplayMode: "countdown",
+      timeBlockPattern: null
     },
     nextOccurrenceOn: "2026-07-13",
     activeTaskId: null,
@@ -205,6 +207,8 @@ function task(overrides: Partial<TodoItem> = {}): TodoItem {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: [],
     ...overrides
   };

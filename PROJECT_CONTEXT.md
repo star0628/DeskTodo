@@ -31,8 +31,8 @@
 | 项目 | 当前值 |
 | --- | --- |
 | 产品名 | DeskTodo |
-| 当前发布版本 | `v0.4.1` |
-| 本文基线提交 | `4ca7610` |
+| 当前开发版本 | `v0.6.0`（最新公开发布仍为 `v0.4.1`） |
+| 本文起点提交 | `5535a949c8ea199e70570594ad3c0ae3e8e9eead` |
 | GitHub | <https://github.com/star0628/DeskTodo> |
 | 主平台 | Windows 10/11 x64 |
 | 桌面框架 | Tauri 2 |
@@ -43,7 +43,9 @@
 | 许可证 | MIT |
 | 应用 identifier | `com.desktodo.desktop` |
 | Store 文件 | `%APPDATA%\com.desktodo.desktop\desktodo-state.json` |
-| 当前 AppState schema | `9` |
+| 当前 AppState schema | `10` |
+| Calendar Store 文件 | `%APPDATA%\com.desktodo.desktop\desktodo-calendar-state.json` |
+| 当前 CalendarState schema | `2` |
 
 版本号必须在以下文件保持一致：
 
@@ -59,7 +61,7 @@ DeskTodo 是一个 Windows 优先、长期放在桌面上的轻量 Todo 小组�
 
 核心价值：
 
-- 打开即可记录，不登录、不联网、不展示广告；
+- 打开即可记录，不登录、不展示广告；Todo 核心不需要联网，只有用户主动配置 Apple 公共日历后才进行受限只读访问；
 - 在一个小窗口中完成高频任务操作；
 - 未完成工作自然跨日保留，已完成工作可按实际完成日期回顾；
 - 可为未来日期做轻量计划，但不引入完整日历产品复杂度；
@@ -81,7 +83,7 @@ DeskTodo 是一个 Windows 优先、长期放在桌面上的轻量 Todo 小组�
 
 除非用户在后续版本中明确批准，不要主动加入：
 
-- 云同步或多设备实时同步；
+- Todo 云同步或多设备实时同步；Apple 公共日历只读订阅是用户明确批准的单向数据源，不改变此边界；
 - 账号、登录、团队协作；
 - 通知提醒；
 - 番茄钟或时间追踪；
@@ -169,6 +171,19 @@ DeskTodo 是一个 Windows 优先、长期放在桌面上的轻量 Todo 小组�
 - 保存并恢复窗口位置和尺寸；
 - 默认 `skipTaskbar: true`。
 
+### 4.6 Apple 日历只读订阅
+
+- 用户可在设置中添加 Apple Calendar 公共链接，最多 8 个来源；
+- 支持全球 `p<n>-caldav.icloud.com`、中国大陆 `p<n>-caldav.icloud.com.cn` 和 `calendars.icloud.com/holidays/<地区>_<语言>.ics` 官方节假日源，接受 `webcal://` 或 `https://`；
+- 同步链路严格单向只读，不回写、不删除 Apple 事件；用户可显式把某个事件复制为独立 Todo，后续两者不保持关联；
+- Apple 日历摘要最多显示两项，可持久化折叠；完整列表入口在折叠后仍可用；
+- 完整公开链接只保存在 Windows Credential Manager，绝不进入 AppState、CalendarState、日志、源码或测试 fixture；
+- CalendarState schema v2、calendar reducer、repository、Store 文件和串行保存队列均与 Todo AppState 隔离；
+- 支持全天/跨日/时区、RRULE/RDATE/EXDATE、改期例外和取消实例；
+- 同步采用 ETag/Last-Modified、5 分钟轮询、焦点过期刷新、每来源 latest-generation、最多 2 个来源并发；
+- 临时失败保留最后成功快照并按 5/10/20/40/60 分钟退避；失效链接停止自动重试；
+- 原生层执行严格 Apple host/path 白名单、白名单内重定向、20 秒超时、5 MB 响应和 10,000 实例上限。
+
 ## 5. 总体架构
 
 DeskTodo 使用单向状态流。React 组件不拥有 Todo 真相，也不能直接写 Store。
@@ -188,6 +203,24 @@ flowchart LR
   RUST["Tauri Rust lifecycle"] <-->|events / commands| APP
 ```
 
+Apple 日历使用平行而隔离的单向状态流：
+
+```mermaid
+flowchart LR
+  SETTINGS["Settings link draft"] --> NATIVE["Tauri allowlisted fetch"]
+  NATIVE --> CRED["Windows Credential Manager"]
+  NATIVE --> PARSER["ICAL.js bounded parser"]
+  PARSER --> CREDUCER["calendarReducer"]
+  CREDUCER --> CSTATE["CalendarState schema v2"]
+  CSTATE --> CSELECT["Calendar selectors"]
+  CSELECT --> UI["Read-only agenda / date markers"]
+  UI -->|"explicit copy"| REDUCER["todoReducer addTaskFromCalendar"]
+  CSTATE --> CQUEUE["Serialized calendar save queue"]
+  CQUEUE --> CSTORE["desktodo-calendar-state.json"]
+```
+
+Calendar 自动同步不能写 Todo。只有用户点击添加并确认编辑后，UI 才能通过 `addTaskFromCalendar` action 将事件数据复制到 `todoReducer`；组件和 calendar reducer 均不得直接修改 Todo state。Calendar 网络或解析失败不得阻塞 Todo hydration、保存、窗口层级切换、隐藏或退出；退出 flush 会分别等待两条串行保存队列。
+
 四类状态必须区分：
 
 1. **持久化领域状态**：`AppState`，通过 reducer 修改并通过 repository 保存。
@@ -203,6 +236,7 @@ desktop-todo/
 │  ├─ App.tsx                 应用编排、hydration、dispatch、save queue、日期视图
 │  ├─ main.tsx                React 入口
 │  ├─ components/             可交互 UI 与对话框
+│  ├─ calendar/               独立日历 domain、parser、hooks、platform 与 persistence
 │  ├─ domain/                 纯领域模型、reducer、selector、排序、重复、截止时间
 │  ├─ persistence/            schema、repository、Store/localStorage、保存策略、窗口模式
 │  ├─ platform/               文件服务与 autostart 平台适配
@@ -239,11 +273,24 @@ desktop-todo/
 | `taskSearch.ts` | 本地只读搜索和排序 |
 | `historyDeletion.ts` | 历史删除可用性、计划、删除和恢复快照 |
 
-### 6.2 `src/persistence`
+### 6.2 `src/calendar`
+
+| 文件/目录 | 职责 |
+| --- | --- |
+| `domain/calendarTypes.ts` | CalendarState schema v2、来源种类、只读事件和同步状态 |
+| `domain/calendarReducer.ts` | 日历持久化状态变化唯一入口；generation 防止迟到响应覆盖新快照 |
+| `domain/calendarSelectors.ts` | 按本地日期派生日程和日期数量 |
+| `domain/calendarFeedParser.ts` | 使用 ICAL.js 安全解析 RFC 5545、重复和例外；限制时间窗与实例数量 |
+| `domain/calendarTodoImport.ts` | 将只读 CalendarEvent 显式复制为 Todo 时间段草稿 |
+| `persistence/` | 独立 repository、schema、Tauri Store/local fallback |
+| `platform/calendarFeedClient.ts` | Tauri commands 的类型化边界，不记录链接 |
+| `hooks/useCalendarIntegration.ts` | hydration、串行保存、轮询、退避、并发和增删来源编排 |
+
+### 6.3 `src/persistence`
 
 | 文件 | 职责 |
 | --- | --- |
-| `appStateSchema.ts` | 默认 state、schema v1-v9 解析/迁移、关系校验 |
+| `appStateSchema.ts` | 默认 state、schema v1-v10 解析/迁移、关系校验 |
 | `appStateRepository.ts` | `load/save` 接口和 `LoadStatus` |
 | `tauriTaskStore.ts` | Tauri Store 实现、迁移备份、文件状态保护 |
 | `localTaskStore.ts` | 浏览器与单测 localStorage 实现 |
@@ -252,7 +299,7 @@ desktop-todo/
 | `windowLayer.ts` | renderer session、latest-wins 窗口层级请求、原生 ACK 与 recovery completion |
 | `windowRecovery.ts` | 窗口恢复时的模式收敛规则 |
 
-### 6.3 `src/components`
+### 6.4 `src/components`
 
 | 文件 | 职责 |
 | --- | --- |
@@ -306,13 +353,15 @@ interface TodoItem {
 - `completedOn` 是本地 `YYYY-MM-DD`，不能用 UTC 字符串截取代替；
 - `scheduledFor` 是计划日期，不是完成日期；
 - `deadlineAt` 是 ISO instant，编辑和展示按 Windows 本地时区；
+- `timeBlock` 是独立的全天或起止时间段，不得复用 `deadlineAt` 表达；
+- `calendarEventRef` 仅用于防止同一日程重复复制，不包含订阅 URL；删除该 Todo 后可以再次复制；
 - `recurrenceSeriesId !== null` 时必须存在计划日期和对应 series。
 
 ### 7.2 `AppState`
 
 ```ts
 interface AppState {
-  schemaVersion: 9;
+  schemaVersion: 10;
   tasks: TodoItem[];
   archivedCompletions: ArchivedCompletionRecord[];
   recurrenceSeries: RecurrenceSeries[];
@@ -323,7 +372,7 @@ interface AppState {
 - `tasks` 保存实时任务和其完成元数据；
 - `archivedCompletions` 保存从文件导入的只读完成快照；历史删除及撤销恢复会操作这些记录，但不会由普通任务完成流程生成它们；
 - `recurrenceSeries` 保存重复模板和物化进度；
-- `settings` 保存可持久化视觉和窗口偏好；
+- `settings` 保存可持久化视觉、窗口偏好和 Apple 日历摘要折叠偏好；
 - autostart 不在 `AppSettings`，操作系统是其真相来源。
 
 ### 7.3 `RecurrenceSeries`
@@ -523,6 +572,8 @@ interface AppStateRepository {
 
 Tauri 使用 `tauriTaskStore`，浏览器和测试使用 `localTaskStore`。
 
+Calendar 使用独立的 `CalendarStateRepository`，Tauri 实现为 `tauriCalendarStore`，浏览器测试回退为 `localCalendarStore`。CalendarState schema v1 会在内存迁移到 v2，并补充 `published` 来源种类；CalendarState 不嵌入 AppState，也不包含公开链接。
+
 ### 13.2 Hydration
 
 App 初始 state 是 default，但在 repository load 完成前：
@@ -546,6 +597,8 @@ App 初始 state 是 default，但在 repository load 完成前：
 
 串行队列防止快速连续操作出现旧 state 最后写入、覆盖新 state 的竞态。失败不能把 revision 标记为已保存；invalid/error fallback 的首次真实内容保存成功后，队列会补写其间发生的合法设置变化。
 
+Calendar 有独立串行 Promise queue；每个来源还有独立 in-flight promise 和递增 generation。旧 generation 的成功或失败响应必须是 reducer no-op，不能覆盖新快照。Todo queue 与 Calendar queue 相互独立，只在 hide/quit durability boundary 同时 flush。
+
 ### 13.4 无效 Store 保护
 
 当 load status 是 `invalid` 或 `error`：
@@ -555,15 +608,17 @@ App 初始 state 是 default，但在 repository load 完成前：
 - 用户发生真实 Todo 内容 mutation 后，允许建立并保存新的 clean state；
 - 第一次 clean save 成功后 status 变为 `ok`，后续设置修改可正常保存。
 
-Todo 内容 mutation 包括任务、子任务、历史、导入、排序、重要、schedule 和 recurrence 操作。
+Todo 内容 mutation 包括任务、子任务、历史、导入、日历事件复制、排序、重要、schedule 和 recurrence 操作。
+
+Calendar invalid/error fallback 同样不得被 hydration 或自动同步覆盖。只有用户明确执行添加/移除来源时可以建立新的 clean CalendarState。
 
 ### 13.5 Schema 迁移备份
 
-schema v1-v8 可迁移到 v9。迁移成功后不会立刻写盘；第一次后续保存时：
+schema v1-v9 可迁移到 v10。迁移成功后不会立刻写盘；第一次后续保存时：
 
 - 先把旧 raw state 写入对应版本 backup key；
 - backup key 已存在则不覆盖；
-- 再写 `app-state` schema v9；
+- 再写 `app-state` schema v10；
 - 成功后清除 pending backup。
 
 Tauri backup key 示例：`app-state-v8-backup`。浏览器使用 `desktodo:app-state-v8-backup`。
@@ -574,9 +629,12 @@ Tauri backup key 示例：`app-state-v8-backup`。浏览器使用 `desktodo:app-
 
 ```text
 %APPDATA%\com.desktodo.desktop\desktodo-state.json
+%APPDATA%\com.desktodo.desktop\desktodo-calendar-state.json
 ```
 
-保持 `identifier` 和 Store 文件名不变时，覆盖安装不会删除用户数据。升级前仍建议备份该文件。
+Apple 公共链接不在上述文件中；它以 `com.desktodo.desktop/calendar/<sourceId>` 命名保存在当前 Windows 用户的 Credential Manager。源码、日志、测试和 CalendarState 只能使用虚构 token。
+
+保持 `identifier` 和 Store 文件名不变时，覆盖安装不会删除用户数据。升级前仍建议同时备份两个 Store 文件；Windows 凭据由系统管理，不应通过复制 Store 冒充完整订阅备份。
 
 ## 14. 完成记录导入导出
 
@@ -814,6 +872,7 @@ Events：
 浏览器版：
 
 - 使用 localStorage repository；
+- CalendarState 可使用独立 localStorage repository 做开发/单测，但 Apple 日历原生拉取和凭据操作明确不可用；
 - 导入导出使用 Web File/Blob 行为；
 - 窗口隐藏/关闭与 layer 控件明确 disabled，并显示“仅桌面版可用”；
 - window layer controller 返回 `unavailable`，绝不伪装为 native success；
@@ -826,21 +885,23 @@ Events：
 
 ### 20.1 测试层级
 
-- domain unit：reducer、selector、date、deadline、recurrence、sorting、search；
-- persistence unit：schema、migration、load status、Store/local fallback、save policy；
-- component：输入、编辑、dialog、focus、settings、DnD helpers；
+- domain unit：Todo/Calendar reducer、selector、date、deadline、recurrence、sorting、search 和 ICS parser；
+- persistence unit：Todo/Calendar schema、migration、load status、Store/local fallback、save policy；
+- component：输入、编辑、dialog、focus、settings、DnD helpers 和只读日历 agenda；
 - App integration：hydration、未来 Quick Add、过去只读等编排；
-- Rust/native：coordinator session/recovery/hide unit tests、Cargo 格式检查与 Tauri build；
+- Rust/native：coordinator session/recovery/hide、Apple URL 白名单、凭据 source-id 单元测试、Cargo 格式检查与 Tauri build；
 - Playwright：视觉快照、几何、焦点、最小窗口、长按拖拽和历史删除。
 
 v0.4.1 发布基线：
 
-- Vitest：47 files / 411 tests；
+- Vitest：55 files / 443 tests；
 - Playwright：73 tests；
 - npm audit：0 vulnerabilities；
 - Windows CI 和 Tauri NSIS build 通过。
 
 计数会随测试增加而变化；“全部通过”比固定数量更重要。
+
+v0.6.0 需新增覆盖：全球/中国大陆虚构公开 URL、Apple 官方多地区节假日路径、SSRF/重定向拒绝、ICS 基础/全天/跨日/重复/EXDATE/例外/取消、日历 reducer no-op/generation、CalendarState v1→v2、AppState v9→v10、事件复制去重、时间段本地日期语义、折叠持久化、hydration 不保存、last-good snapshot、设置添加/移除和最小窗口显示。真实用户链接只能在隔离的原生人工验收中临时输入，不得进入命令记录、fixture、截图或仓库。
 
 ### 20.2 必跑命令
 

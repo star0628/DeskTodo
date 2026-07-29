@@ -1,3 +1,6 @@
+mod calendar_credentials;
+mod calendar_feed;
+
 use std::{
     fs,
     io::ErrorKind,
@@ -9,6 +12,7 @@ use std::{
     time::Duration,
 };
 
+use calendar_feed::{CalendarCommandError, CalendarFetchResponse};
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
@@ -16,6 +20,7 @@ use tauri::{
     Emitter, Manager, WindowEvent,
 };
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
+use zeroize::Zeroizing;
 
 #[cfg(windows)]
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -229,6 +234,11 @@ pub fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
+            desktodo_calendar_probe_public_feed,
+            desktodo_calendar_store_source_secret,
+            desktodo_calendar_fetch_source,
+            desktodo_calendar_delete_source_secret,
+            desktodo_calendar_store_file_status,
             desktodo_initialize_window_lifecycle,
             desktodo_apply_window_layer_mode,
             desktodo_complete_window_recovery,
@@ -824,6 +834,118 @@ fn desktodo_store_file_status(app: tauri::AppHandle) -> String {
     } else {
         "invalid".into()
     }
+}
+
+#[tauri::command]
+async fn desktodo_calendar_probe_public_feed(
+    url: String,
+) -> Result<CalendarFetchResponse, CalendarCommandError> {
+    let secret = Zeroizing::new(url);
+    calendar_feed::fetch_public_calendar(secret.as_str(), None, None).await
+}
+
+#[tauri::command]
+async fn desktodo_calendar_store_source_secret(
+    app: tauri::AppHandle,
+    source_id: String,
+    url: String,
+) -> Result<(), CalendarCommandError> {
+    calendar_feed::normalize_apple_public_calendar_url(&url)?;
+    let identifier = app.config().identifier.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let secret = Zeroizing::new(url);
+        calendar_credentials::store_source_secret(&identifier, &source_id, secret.as_str())
+            .map_err(calendar_credential_error)
+    })
+    .await
+    .map_err(|_| {
+        CalendarCommandError::new(
+            "calendar_credential_store_unavailable",
+            "Windows 凭据管理器暂时不可用。",
+        )
+    })?
+}
+
+#[tauri::command]
+async fn desktodo_calendar_fetch_source(
+    app: tauri::AppHandle,
+    source_id: String,
+    etag: Option<String>,
+    last_modified: Option<String>,
+) -> Result<CalendarFetchResponse, CalendarCommandError> {
+    let identifier = app.config().identifier.clone();
+    let secret = tauri::async_runtime::spawn_blocking(move || {
+        calendar_credentials::read_source_secret(&identifier, &source_id)
+            .map_err(calendar_credential_error)
+    })
+    .await
+    .map_err(|_| {
+        CalendarCommandError::new(
+            "calendar_credential_store_unavailable",
+            "Windows 凭据管理器暂时不可用。",
+        )
+    })??;
+    let secret = Zeroizing::new(secret);
+    calendar_feed::fetch_public_calendar(secret.as_str(), etag.as_deref(), last_modified.as_deref())
+        .await
+}
+
+#[tauri::command]
+async fn desktodo_calendar_delete_source_secret(
+    app: tauri::AppHandle,
+    source_id: String,
+) -> Result<(), CalendarCommandError> {
+    let identifier = app.config().identifier.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        calendar_credentials::delete_source_secret(&identifier, &source_id)
+            .map_err(calendar_credential_error)
+    })
+    .await
+    .map_err(|_| {
+        CalendarCommandError::new(
+            "calendar_credential_store_unavailable",
+            "Windows 凭据管理器暂时不可用。",
+        )
+    })?
+}
+
+#[tauri::command]
+fn desktodo_calendar_store_file_status(app: tauri::AppHandle) -> String {
+    let path = match app.path().app_data_dir() {
+        Ok(dir) => dir.join("desktodo-calendar-state.json"),
+        Err(error) => {
+            eprintln!("DeskTodo calendar Store path lookup failed: {error}");
+            return "error".into();
+        }
+    };
+
+    let contents = match fs::read_to_string(path) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == ErrorKind::NotFound => return "missing".into(),
+        Err(error) => {
+            eprintln!("DeskTodo calendar Store file read failed: {error}");
+            return "error".into();
+        }
+    };
+
+    if serde_json::from_str::<serde_json::Value>(&contents).is_ok() {
+        "present".into()
+    } else {
+        "invalid".into()
+    }
+}
+
+fn calendar_credential_error(code: &'static str) -> CalendarCommandError {
+    let message = match code {
+        "calendar_source_id_invalid" => "日历来源标识无效。",
+        "calendar_credential_missing" => "未找到该日历的安全凭据。",
+        "calendar_credential_delete_failed" => "无法删除 Windows 日历凭据。",
+        "calendar_credential_write_failed" => "无法保存 Windows 日历凭据。",
+        "calendar_credential_invalid" => "Windows 日历凭据已损坏。",
+        "calendar_credential_too_large" => "Apple 公共日历链接过长。",
+        _ => "Windows 凭据管理器暂时不可用。",
+    };
+    CalendarCommandError::new(code, message)
 }
 
 fn finish_quit(app: &tauri::AppHandle) {

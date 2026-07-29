@@ -8,6 +8,32 @@ export interface DeadlinePattern {
   localTime: string;
 }
 
+export type TodoTimeBlock =
+  | {
+      kind: "allDay";
+      startOn: LocalDateKey;
+      endExclusiveOn: LocalDateKey;
+    }
+  | {
+      kind: "timed";
+      startsAt: string;
+      endsAt: string;
+    };
+
+export type TodoTimeBlockPattern =
+  | {
+      kind: "allDay";
+      startDayOffset: number;
+      durationDays: number;
+    }
+  | {
+      kind: "timed";
+      startDayOffset: number;
+      startLocalTime: string;
+      endDayOffset: number;
+      endLocalTime: string;
+    };
+
 export type RecurrenceRule =
   | { kind: "daily" }
   | { kind: "weekdays" }
@@ -19,6 +45,7 @@ export interface RecurrenceTemplate {
   childTitles: string[];
   deadlinePattern: DeadlinePattern | null;
   deadlineDisplayMode: DeadlineDisplayMode;
+  timeBlockPattern: TodoTimeBlockPattern | null;
 }
 
 export interface RecurrenceSeries {
@@ -42,8 +69,10 @@ export interface TodoItem {
   completedOn: LocalDateKey | null;
   important: boolean;
   scheduledFor: LocalDateKey | null;
+  timeBlock: TodoTimeBlock | null;
   deadlineAt: string | null;
   deadlineDisplayMode: DeadlineDisplayMode;
+  calendarEventRef: string | null;
   recurrenceSeriesId: string | null;
   children: TodoItem[];
 }
@@ -101,10 +130,11 @@ export interface AppSettings {
   fontSize: number;
   backgroundOpacityPercent: number;
   collapseCompletedByDefault: boolean;
+  calendarAgendaCollapsed: boolean;
 }
 
 export interface AppState {
-  schemaVersion: 9;
+  schemaVersion: 10;
   tasks: TodoItem[];
   archivedCompletions: ArchivedCompletionRecord[];
   recurrenceSeries: RecurrenceSeries[];
