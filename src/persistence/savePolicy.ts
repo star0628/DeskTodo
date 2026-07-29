@@ -35,6 +35,7 @@ export function shouldSaveTodoMutation({
 function isTodoContentMutation(action: TodoAction): boolean {
   switch (action.type) {
     case "addTask":
+    case "addTaskFromCalendar":
     case "editTask":
     case "toggleTask":
     case "deleteTask":

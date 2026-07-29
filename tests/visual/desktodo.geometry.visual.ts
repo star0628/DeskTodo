@@ -436,7 +436,7 @@ test("keeps all primary overlays inside the minimum viewport", async ({ page }) 
   await page.keyboard.press("Escape");
 
   await taskCard(page, "回复客户关于交付时间的邮件")
-    .getByRole("button", { name: /设置计划日期、截止时间或重复/ })
+    .getByRole("button", { name: /设置计划日期、时间段、截止时间或重复/ })
     .click();
   await page.getByRole("switch", { name: /设置截止时间/ }).click();
   overlayBoxes.recurrence = await visibleDialogBox(page, "时间安排");
@@ -455,6 +455,51 @@ test("keeps all primary overlays inside the minimum viewport", async ({ page }) 
     expect(box.right).toBeLessThanOrEqual(300);
     expect(box.bottom).toBeLessThanOrEqual(280);
   }
+});
+
+test("keeps the in-app time block calendar inside the minimum viewport", async ({
+  page
+}) => {
+  await openVisualApp(page, createVisualState("standard"), {
+    viewport: { width: 300, height: 280 }
+  });
+
+  await taskCard(page, "回复客户关于交付时间的邮件")
+    .getByRole("button", { name: /设置计划日期、时间段、截止时间或重复/ })
+    .click();
+  await page.getByRole("tab", { name: "时间段" }).click();
+  await page.getByRole("radio", { name: "指定时间" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "时间安排" });
+  await expect(page.getByLabel("选择开始日期")).toBeVisible();
+  const geometry = await dialog.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const content = element.querySelector<HTMLElement>(".schedule-content");
+    const calendar = element.querySelector<HTMLElement>(".schedule-time-calendar");
+    return {
+      left: box.left,
+      right: box.right,
+      top: box.top,
+      bottom: box.bottom,
+      contentOverflow: content
+        ? content.scrollWidth - content.clientWidth
+        : Number.POSITIVE_INFINITY,
+      calendarOverflow: calendar
+        ? calendar.scrollWidth - calendar.clientWidth
+        : Number.POSITIVE_INFINITY,
+      hasNativeDateTimePicker:
+        element.querySelector('input[type="datetime-local"]') !== null
+    };
+  });
+
+  expect(geometry.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.right).toBeLessThanOrEqual(300);
+  expect(geometry.top).toBeGreaterThanOrEqual(0);
+  expect(geometry.bottom).toBeLessThanOrEqual(280);
+  expect(geometry.contentOverflow).toBeLessThanOrEqual(1);
+  expect(geometry.calendarOverflow).toBeLessThanOrEqual(1);
+  expect(geometry.hasNativeDateTimePicker).toBe(false);
+  await expect(dialog.locator('input[type="time"]')).toHaveValue("09:00");
 });
 
 test("maintains keyboard focus flow for quick add and dialogs", async ({ page }) => {
@@ -484,7 +529,7 @@ test("maintains keyboard focus flow for quick add and dialogs", async ({ page })
   await expect(searchTrigger).toBeFocused();
 
   const recurrenceTrigger = taskCard(page, "回复客户关于交付时间的邮件")
-    .getByRole("button", { name: /设置计划日期、截止时间或重复/ });
+    .getByRole("button", { name: /设置计划日期、时间段、截止时间或重复/ });
   await recurrenceTrigger.click();
   await expect(page.getByRole("dialog", { name: "时间安排" })).toBeVisible();
   await page.getByRole("switch", { name: /设置截止时间/ }).click();

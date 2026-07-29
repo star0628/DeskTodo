@@ -27,6 +27,7 @@ import {
   RecurrenceSeries,
   TodoId,
   TodoItem,
+  TodoTimeBlock,
   WindowLayerMode
 } from "./todoTypes";
 import {
@@ -41,6 +42,11 @@ import {
   HistoryDeletionSnapshot,
   restoreHistoryEntries
 } from "./historyDeletion";
+import {
+  createTodoTimeBlockPattern,
+  isValidTodoTimeBlock,
+  todoTimeBlockIntersectsDate
+} from "./timeBlock";
 
 export type RecurringDeleteBehavior = "skip" | "stop";
 
@@ -50,6 +56,14 @@ export type TodoAction =
       title: string;
       scheduledFor?: LocalDateKey | null;
       today?: LocalDateKey;
+    }
+  | {
+      type: "addTaskFromCalendar";
+      title: string;
+      scheduledFor: LocalDateKey;
+      timeBlock: TodoTimeBlock;
+      calendarEventRef: string;
+      today: LocalDateKey;
     }
   | { type: "editTask"; id: TodoId; title: string }
   | { type: "toggleTask"; id: TodoId }
@@ -75,6 +89,7 @@ export type TodoAction =
       deadlineDisplayMode: DeadlineDisplayMode;
       rule: RecurrenceRule | null;
       scheduledFor?: LocalDateKey | null;
+      timeBlock?: TodoTimeBlock | null;
       today: LocalDateKey;
     }
   | { type: "materializeRecurrences"; today: LocalDateKey }
@@ -85,16 +100,24 @@ export type TodoAction =
   | { type: "setBackgroundOpacity"; percent: number }
   | { type: "setCompactMode"; enabled: boolean }
   | { type: "setCollapseCompletedByDefault"; enabled: boolean }
+  | { type: "setCalendarAgendaCollapsed"; collapsed: boolean }
   | { type: "hydrateState"; state: AppState };
 
 interface CreateTodoItemOptions {
   timestamp?: string;
   scheduledFor?: LocalDateKey | null;
+  timeBlock?: TodoTimeBlock | null;
+  calendarEventRef?: string | null;
 }
 
 export function createTodoItem(
   title: string,
-  { timestamp = getIsoTimestamp(), scheduledFor = null }: CreateTodoItemOptions = {}
+  {
+    timestamp = getIsoTimestamp(),
+    scheduledFor = null,
+    timeBlock = null,
+    calendarEventRef = null
+  }: CreateTodoItemOptions = {}
 ): TodoItem {
   return {
     id: createId(),
@@ -106,8 +129,10 @@ export function createTodoItem(
     completedOn: null,
     important: false,
     scheduledFor,
+    timeBlock,
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
+    calendarEventRef,
     recurrenceSeriesId: null,
     children: []
   };
@@ -133,6 +158,35 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
       return {
         ...state,
         tasks: [...state.tasks, createTodoItem(title, { scheduledFor })]
+      };
+    }
+
+    case "addTaskFromCalendar": {
+      const title = normalizeTitle(action.title);
+      if (
+        !title ||
+        !isLocalDateKey(action.scheduledFor) ||
+        !isLocalDateKey(action.today) ||
+        action.scheduledFor < action.today ||
+        !isValidTodoTimeBlock(action.timeBlock) ||
+        !todoTimeBlockIntersectsDate(action.timeBlock, action.scheduledFor) ||
+        !isSafeCalendarEventRef(action.calendarEventRef) ||
+        state.tasks.some(
+          (task) => task.calendarEventRef === action.calendarEventRef
+        )
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        tasks: [
+          ...state.tasks,
+          createTodoItem(title, {
+            scheduledFor: action.scheduledFor,
+            timeBlock: cloneTodoTimeBlock(action.timeBlock),
+            calendarEventRef: action.calendarEventRef
+          })
+        ]
       };
     }
 
@@ -352,7 +406,16 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
     }
 
     case "restoreTask": {
-      if (state.tasks.some((task) => task.id === action.task.id)) return state;
+      if (
+        state.tasks.some(
+          (task) =>
+            task.id === action.task.id ||
+            (action.task.calendarEventRef !== null &&
+              task.calendarEventRef === action.task.calendarEventRef)
+        )
+      ) {
+        return state;
+      }
       const index = clampIndex(action.index, state.tasks.length);
       const tasks = [...state.tasks];
       tasks.splice(index, 0, action.task);
@@ -395,6 +458,7 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
         state,
         task,
         task.scheduledFor,
+        task.timeBlock,
         task.deadlineAt,
         task.deadlineDisplayMode,
         action.rule,
@@ -409,7 +473,17 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
       if (!isDeadlineDisplayMode(action.deadlineDisplayMode)) return state;
       const scheduledFor =
         action.scheduledFor === undefined ? task.scheduledFor : action.scheduledFor;
+      const timeBlock =
+        action.timeBlock === undefined ? task.timeBlock : action.timeBlock;
       if (scheduledFor !== null && !isLocalDateKey(scheduledFor)) return state;
+      if (timeBlock !== null && !isValidTodoTimeBlock(timeBlock)) return state;
+      if (
+        timeBlock !== null &&
+        (scheduledFor === null ||
+          !todoTimeBlockIntersectsDate(timeBlock, scheduledFor))
+      ) {
+        return state;
+      }
       if (
         scheduledFor !== task.scheduledFor &&
         (scheduledFor === null ? task.recurrenceSeriesId !== null : scheduledFor < action.today)
@@ -420,6 +494,7 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
         state,
         task,
         scheduledFor,
+        timeBlock ? cloneTodoTimeBlock(timeBlock) : null,
         action.deadlineAt,
         action.deadlineDisplayMode,
         action.rule,
@@ -516,6 +591,22 @@ export function todoReducer(state: AppState, action: TodoAction): AppState {
       };
     }
 
+    case "setCalendarAgendaCollapsed": {
+      if (
+        typeof action.collapsed !== "boolean" ||
+        state.settings.calendarAgendaCollapsed === action.collapsed
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          calendarAgendaCollapsed: action.collapsed
+        }
+      };
+    }
+
     default:
       return state;
   }
@@ -560,6 +651,7 @@ function updateTaskSchedule(
   state: AppState,
   task: TodoItem,
   scheduledFor: LocalDateKey | null,
+  timeBlock: TodoTimeBlock | null,
   deadlineAt: string | null,
   deadlineDisplayMode: DeadlineDisplayMode,
   requestedRule: RecurrenceRule | null,
@@ -570,18 +662,28 @@ function updateTaskSchedule(
   if (requestedRule !== null && !rule) return state;
   if (existingSeries && scheduledFor !== task.scheduledFor) return state;
   const scheduleAnchor = scheduledFor ?? today;
+  if (rule && timeBlock && !createTodoTimeBlockPattern(timeBlock, scheduleAnchor)) {
+    return state;
+  }
   if (rule && deadlineAt && !createDeadlinePattern(deadlineAt, scheduleAnchor)) {
     return state;
   }
 
   const scheduleChanged = task.scheduledFor !== scheduledFor;
+  const timeBlockChanged = !todoTimeBlocksEqual(task.timeBlock, timeBlock);
   const deadlineChanged = task.deadlineAt !== deadlineAt;
   const displayModeChanged = task.deadlineDisplayMode !== deadlineDisplayMode;
   const recurrenceChanged =
     rule === null
       ? existingSeries !== undefined
       : !existingSeries || !recurrenceRulesEqual(existingSeries.rule, rule);
-  if (!scheduleChanged && !deadlineChanged && !displayModeChanged && !recurrenceChanged) {
+  if (
+    !scheduleChanged &&
+    !timeBlockChanged &&
+    !deadlineChanged &&
+    !displayModeChanged &&
+    !recurrenceChanged
+  ) {
     return state;
   }
   if (rule && !existingSeries && task.done) return state;
@@ -592,6 +694,7 @@ function updateTaskSchedule(
     const updatedTask: TodoItem = {
       ...task,
       scheduledFor,
+      timeBlock,
       deadlineAt,
       deadlineDisplayMode,
       recurrenceSeriesId: existingSeries ? null : task.recurrenceSeriesId,
@@ -611,9 +714,15 @@ function updateTaskSchedule(
   }
 
   if (existingSeries) {
-    const taskChanged = deadlineChanged || displayModeChanged;
+    const taskChanged = timeBlockChanged || deadlineChanged || displayModeChanged;
     const updatedTask = taskChanged
-      ? { ...task, deadlineAt, deadlineDisplayMode, updatedAt: timestamp }
+      ? {
+          ...task,
+          timeBlock,
+          deadlineAt,
+          deadlineDisplayMode,
+          updatedAt: timestamp
+        }
       : task;
     return {
       ...state,
@@ -643,6 +752,7 @@ function updateTaskSchedule(
   const updatedTask: TodoItem = {
     ...task,
     scheduledFor: scheduleAnchor,
+    timeBlock,
     deadlineAt,
     deadlineDisplayMode,
     recurrenceSeriesId: seriesId,
@@ -731,6 +841,49 @@ function getRecurrenceAnchor(task: TodoItem, today: LocalDateKey): LocalDateKey 
 
 function normalizeTitle(title: string): string {
   return title.trim();
+}
+
+function isSafeCalendarEventRef(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 512 &&
+    !value.includes("\u0000")
+  );
+}
+
+function todoTimeBlocksEqual(
+  left: TodoTimeBlock | null,
+  right: TodoTimeBlock | null
+): boolean {
+  if (left === null || right === null) return left === right;
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "allDay" && right.kind === "allDay") {
+    return (
+      left.startOn === right.startOn &&
+      left.endExclusiveOn === right.endExclusiveOn
+    );
+  }
+  return (
+    left.kind === "timed" &&
+    right.kind === "timed" &&
+    left.startsAt === right.startsAt &&
+    left.endsAt === right.endsAt
+  );
+}
+
+function cloneTodoTimeBlock(timeBlock: TodoTimeBlock): TodoTimeBlock {
+  return timeBlock.kind === "allDay"
+    ? {
+        kind: "allDay",
+        startOn: timeBlock.startOn,
+        endExclusiveOn: timeBlock.endExclusiveOn
+      }
+    : {
+        kind: "timed",
+        startsAt: timeBlock.startsAt,
+        endsAt: timeBlock.endsAt
+      };
 }
 
 function clampIndex(index: number, length: number): number {

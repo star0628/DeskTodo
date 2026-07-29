@@ -48,6 +48,12 @@ import { useLocalDay } from "./hooks/useLocalDay";
 import { formatLocalDateLabel } from "./utils/date";
 import { scheduleTodoFocus, scheduleTodoReveal } from "./utils/focus";
 import { shouldFocusQuickAdd, shouldUndoDelete } from "./utils/keyboard";
+import { useCalendarIntegration } from "./calendar/hooks/useCalendarIntegration";
+import {
+  getCalendarEventCountByDate,
+  getCalendarEventsForDate
+} from "./calendar/domain/calendarSelectors";
+import { CalendarAgenda } from "./components/CalendarAgenda";
 
 function App() {
   const [state, setState] = useState<AppState>(() => fallbackDefaultState());
@@ -64,6 +70,7 @@ function App() {
   const [windowLayerSnapshot, setWindowLayerSnapshot] = useState(() =>
     windowLayerController.getSnapshot()
   );
+  const calendarIntegration = useCalendarIntegration();
   const previousTodayRef = useRef(today);
   const stateRef = useRef<AppState>(state);
   const hasHydratedRef = useRef(false);
@@ -203,7 +210,8 @@ function App() {
       await queuePendingSave();
     }
     await saveQueueRef.current;
-  }, [queuePendingSave]);
+    await calendarIntegration.flush();
+  }, [calendarIntegration.flush, queuePendingSave]);
 
   const requestQuitFromFrontend = useCallback(async () => {
     if (!isTauriRuntime()) return;
@@ -454,6 +462,23 @@ function App() {
     () => getScheduledCountByDate(state, today),
     [state, today]
   );
+  const selectedCalendarEvents = useMemo(
+    () => getCalendarEventsForDate(calendarIntegration.state, selectedDate),
+    [calendarIntegration.state, selectedDate]
+  );
+  const calendarEventCounts = useMemo(
+    () => getCalendarEventCountByDate(calendarIntegration.state),
+    [calendarIntegration.state]
+  );
+  const importedCalendarEventRefs = useMemo(
+    () =>
+      new Set(
+        state.tasks.flatMap((task) =>
+          task.calendarEventRef ? [task.calendarEventRef] : []
+        )
+      ),
+    [state.tasks]
+  );
   const selectedTaskGroups = isToday ? todayTaskGroups : futureTaskGroups;
   const selectedProgress = isToday ? todayProgress : futureProgress;
   const progressByTaskId = useMemo(
@@ -630,16 +655,38 @@ function App() {
         dispatch={dispatchTodoAction}
         onBackgroundOpacityPreview={setBackgroundOpacityPreview}
         onCustomThemePreview={setCustomThemePreview}
+        calendarIntegration={calendarIntegration}
       />
       <DateNavigator
         selectedDate={selectedDate}
         today={today}
         completionCounts={completionCounts}
         scheduledCounts={scheduledCounts}
+        calendarEventCounts={calendarEventCounts}
         onChange={setSelectedDate}
         onOpenSearch={() => setIsSearchOpen(true)}
         searchTriggerRef={searchTriggerRef}
       />
+      {calendarIntegration.hasHydrated && (
+        <CalendarAgenda
+          date={selectedDate}
+          today={today}
+          events={selectedCalendarEvents}
+          sources={calendarIntegration.state.sources}
+          collapsed={state.settings.calendarAgendaCollapsed}
+          importedEventRefs={importedCalendarEventRefs}
+          onCollapsedChange={(collapsed) =>
+            dispatchTodoAction({ type: "setCalendarAgendaCollapsed", collapsed })
+          }
+          onAddEvent={(draft) =>
+            dispatchTodoAction({
+              type: "addTaskFromCalendar",
+              ...draft,
+              today
+            })
+          }
+        />
+      )}
       {!hasHydrated ? (
         <section className="loading-state" aria-live="polite">
           正在加载…

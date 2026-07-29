@@ -4,7 +4,7 @@ import { todoReducer } from "./todoReducer";
 
 function stateWithTasks(tasks: TodoItem[] = []): AppState {
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks,
     archivedCompletions: [],
     recurrenceSeries: [],
@@ -21,7 +21,8 @@ function stateWithTasks(tasks: TodoItem[] = []): AppState {
       },
       fontSize: 16,
       backgroundOpacityPercent: 90,
-      collapseCompletedByDefault: false
+      collapseCompletedByDefault: false,
+      calendarAgendaCollapsed: false
     }
   };
 }
@@ -40,6 +41,8 @@ function task(overrides: Partial<TodoItem> = {}): TodoItem {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: [],
     ...overrides
   };
@@ -963,5 +966,82 @@ describe("todoReducer", () => {
     expect(
       todoReducer(next, { type: "removeImportedCompletionBatch", importBatchId: "missing" })
     ).toBe(next);
+  });
+
+  it("addTaskFromCalendar: creates an independent timed task and deduplicates the event", () => {
+    const initial = stateWithTasks();
+    const action = {
+      type: "addTaskFromCalendar",
+      title: "  客户会议  ",
+      scheduledFor: "2026-07-29",
+      timeBlock: {
+        kind: "timed",
+        startsAt: new Date(2026, 6, 29, 19, 0).toISOString(),
+        endsAt: new Date(2026, 6, 29, 20, 0).toISOString()
+      },
+      calendarEventRef: "source-1:event-1",
+      today: "2026-07-29"
+    } as const;
+
+    const added = todoReducer(initial, action);
+
+    expect(added.tasks).toHaveLength(1);
+    expect(added.tasks[0]).toMatchObject({
+      title: "客户会议",
+      scheduledFor: "2026-07-29",
+      timeBlock: action.timeBlock,
+      calendarEventRef: "source-1:event-1",
+      deadlineAt: null
+    });
+    expect(todoReducer(added, action)).toBe(added);
+  });
+
+  it("addTaskFromCalendar: rejects past, non-intersecting, and unsafe events as no-ops", () => {
+    const initial = stateWithTasks();
+    const base = {
+      type: "addTaskFromCalendar",
+      title: "会议",
+      scheduledFor: "2026-07-29",
+      timeBlock: {
+        kind: "allDay",
+        startOn: "2026-07-29",
+        endExclusiveOn: "2026-07-30"
+      },
+      calendarEventRef: "source-1:event-1",
+      today: "2026-07-29"
+    } as const;
+
+    expect(
+      todoReducer(initial, { ...base, scheduledFor: "2026-07-28" })
+    ).toBe(initial);
+    expect(
+      todoReducer(initial, {
+        ...base,
+        timeBlock: {
+          kind: "allDay",
+          startOn: "2026-07-30",
+          endExclusiveOn: "2026-07-31"
+        }
+      })
+    ).toBe(initial);
+    expect(
+      todoReducer(initial, { ...base, calendarEventRef: "bad\u0000ref" })
+    ).toBe(initial);
+  });
+
+  it("setCalendarAgendaCollapsed: persists only actual boolean changes", () => {
+    const initial = stateWithTasks();
+    const collapsed = todoReducer(initial, {
+      type: "setCalendarAgendaCollapsed",
+      collapsed: true
+    });
+
+    expect(collapsed.settings.calendarAgendaCollapsed).toBe(true);
+    expect(
+      todoReducer(collapsed, {
+        type: "setCalendarAgendaCollapsed",
+        collapsed: true
+      })
+    ).toBe(collapsed);
   });
 });

@@ -10,7 +10,7 @@
 
 DeskTodo is a Windows-first minimal desktop Todo widget. It is intentionally small: a frameless translucent desktop checklist with local persistence, tray behavior, and stable core task interactions.
 
-The current release is v0.4.1. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
+The current development version is v0.6.0; the latest public release remains v0.4.1. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
 
 ## Download and Install
 
@@ -46,6 +46,8 @@ DeskTodo installers are not currently commercially code-signed, so Microsoft Def
 - Tauri single-instance
 - Tauri autostart
 - Tauri dialog and file-system plugins
+- ICAL.js for RFC 5545 parsing and recurrence expansion
+- Reqwest for native, allowlisted Apple public-calendar reads
 
 ## Development
 
@@ -87,13 +89,19 @@ Unsigned Windows builds may trigger a Microsoft Defender SmartScreen warning. Re
 
 ## Privacy and Data
 
-DeskTodo is local-first. It has no account system, analytics, telemetry, cloud sync, or application-managed network service. In the Tauri application, task data is stored by Tauri Store at:
+DeskTodo is local-first. It has no account system, analytics, telemetry, Todo cloud sync, or application-managed relay service. In the Tauri application, task data is stored by Tauri Store at:
 
 ```text
 %APPDATA%\com.desktodo.desktop\desktodo-state.json
 ```
 
-Browser development uses localStorage instead. Do not attach a real Store file to a public issue because task titles may contain private information.
+Read-only Apple Calendar subscriptions are the only optional runtime network feature. After the user explicitly adds a public link, the native layer connects directly to Apple's `p<n>-caldav.icloud.com`, `p<n>-caldav.icloud.com.cn`, or official `calendars.icloud.com/holidays/` feed. The full link is stored in Windows Credential Manager and never enters the Todo Store, calendar cache, logs, or source code. Calendar metadata and the last successful snapshot are isolated in:
+
+```text
+%APPDATA%\com.desktodo.desktop\desktodo-calendar-state.json
+```
+
+Browser development uses localStorage but does not expose Apple Calendar networking. Do not attach a real Store file or public-calendar link to a public issue; task titles, event content, and link tokens may contain private information.
 
 ## Implemented
 
@@ -123,6 +131,10 @@ Browser development uses localStorage instead. Do not attach a real Store file t
 - Automatic removal of older completed work from the Today view without deleting history.
 - Previous-day navigation and a compact dark Chinese calendar for reviewing daily completion history.
 - Calendar completion dots with accessible per-day completion counts.
+- Optional read-only Apple public-calendar display for global, mainland-China, and official regional holiday `.ics` feeds.
+- An isolated calendar reducer, schema v2, repository, and serialized save queue; automatic sync never writes calendar data into Todo `AppState`, and transient failures keep the last successful snapshot.
+- All-day, cross-day, time-zone, recurrence, exclusion, moved-instance, and cancelled-instance handling, with two collapsible compact rows and an always-available full list.
+- Explicitly copy an Apple event into Day Todo after editing its title, target date, and start/end time. The Todo is independent and is never written back or overwritten by later calendar sync.
 - Fully completed work grouped in a collapsible section below active work.
 - Eight-second undo for parent-task, subtask, and confirmed historical-record deletion.
 - `Ctrl+N` focuses Quick Add on Today when no editor or calendar is active.
@@ -159,7 +171,15 @@ Historical dates remain read-only during normal review. Quick Add and editing co
 
 The calendar is keyboard accessible, uses Monday as the first day of the week, and prevents future-date selection. A dot under a date means at least one parent task or subtask was completed on that date; its accessible day label includes the exact count. Today keeps active work above a collapsible completed section. A completed parent with an unfinished child remains in the active area so open work is never hidden.
 
-State schema v8 contains live tasks, imported completion snapshots, visual settings, custom theme seeds, importance, recurrence series, optional deadlines, and each task's deadline display mode. Valid v1-v7 data is migrated in memory; the first subsequent save preserves the original state under the matching versioned backup key before writing schema v8. Existing v6 deadlines migrate to countdown mode, preserving their exact timestamp and current visual behavior. Because v0.1.0 did not store a dedicated completion timestamp, already-completed v1 tasks use their last `updatedAt` value as a best-effort historical completion time. New v0.2 completions are recorded exactly.
+State schema v10 contains live tasks, imported completion snapshots, visual settings, custom theme seeds, importance, independent scheduled dates, independent time blocks, Apple-event copy references, recurrence series, optional deadlines, and each task's deadline display mode. Valid v1-v9 data is migrated in memory; the first subsequent save preserves the original state under the matching versioned backup key before writing schema v10. Schema v9's one-off future scheduling remains supported on parent tasks while children continue to inherit the parent date. Existing v6 deadlines migrate to countdown mode, preserving their exact timestamp and current visual behavior. Because v0.1.0 did not store a dedicated completion timestamp, already-completed v1 tasks use their last `updatedAt` value as a best-effort historical completion time. New completions are recorded exactly.
+
+## Read-only Apple Calendar
+
+Paste an Apple Calendar public link under Settings → Apple Calendar. DeskTodo verifies the URL and calendar content before storing the subscription. It accepts `webcal://` and `https://` for Apple public subscriptions and official regional holiday `.ics` feeds, but only through a strict Apple host/path allowlist. Other hosts, unsafe schemes, user information, query strings, fragments, and redirects outside the allowlist are rejected. Up to eight sources are supported.
+
+Synchronization is strictly one-way and read-only: DeskTodo never creates, edits, or deletes Apple events. A user may explicitly copy one event into an independent Day Todo; this creates no live link and never writes back to Apple. DeskTodo refreshes at startup, every five minutes, and after focus returns when the cache is stale. The native fetcher supports ETag and Last-Modified validators, at most three allowlisted redirects, a 20-second timeout, a 5 MB response limit, at most 10,000 expanded instances per source, and two concurrent sources. Temporary errors use 5/10/20/40/60-minute backoff while preserving the last successful snapshot; an invalid link stops automatic retries until the user removes and re-adds it.
+
+The public link itself is a viewing credential. DeskTodo stores it in Windows Credential Manager. The calendar Store contains only source metadata, validators, sync state, and a bounded parsed snapshot. Removing a source deletes only DeskTodo's local subscription and credential; it does not alter Apple Calendar.
 
 ## Importance, Search, and Recurrence
 
@@ -201,7 +221,8 @@ SimHei is a Windows Simplified Chinese supplemental font. The target Windows ins
 
 ## Known Limitations
 
-- No cloud sync.
+- No Todo cloud or multi-device sync; Apple public calendars are one-way, read-only subscriptions only.
+- No private Apple Calendar, CalDAV login, or write-back to Apple Calendar.
 - No account login.
 - No notification reminders.
 - No Pomodoro.

@@ -1,6 +1,6 @@
 [package]
 name = "desktop-todo"
-version = "0.4.1"
+version = "0.6.0"
 description = "DeskTodo desktop widget"
 authors = ["star0628"]
 license = "MIT"
@@ -16,6 +16,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+futures-util = "0.3"
+reqwest = { version = "0.13.4", features = ["gzip", "stream"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2"
@@ -24,6 +27,9 @@ tauri-plugin-fs = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-store = "2"
 tauri-plugin-window-state = "2"
+tokio = { version = "1", features = ["time"] }
+url = "2.5.8"
+zeroize = "1"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Credentials", "Win32_UI_WindowsAndMessaging"] }

@@ -14,6 +14,7 @@ const V5_BACKUP_KEY = "app-state-v5-backup";
 const V6_BACKUP_KEY = "app-state-v6-backup";
 const V7_BACKUP_KEY = "app-state-v7-backup";
 const V8_BACKUP_KEY = "app-state-v8-backup";
+const V9_BACKUP_KEY = "app-state-v9-backup";
 
 let storePromise: Promise<Store> | undefined;
 
@@ -93,6 +94,14 @@ export function createTauriTaskStore(
 }
 
 function getBackupKey(rawState: unknown): string {
+  if (
+    typeof rawState === "object" &&
+    rawState !== null &&
+    "schemaVersion" in rawState &&
+    rawState.schemaVersion === 9
+  ) {
+    return V9_BACKUP_KEY;
+  }
   if (
     typeof rawState === "object" &&
     rawState !== null &&

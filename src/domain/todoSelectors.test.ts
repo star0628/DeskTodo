@@ -22,13 +22,15 @@ function task(id: string, done: boolean, children: TodoItem[] = []): TodoItem {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children
   };
 }
 
 function state(tasks: TodoItem[]): AppState {
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     tasks,
     archivedCompletions: [],
     recurrenceSeries: [],
@@ -45,7 +47,8 @@ function state(tasks: TodoItem[]): AppState {
       },
       fontSize: 16,
       backgroundOpacityPercent: 90,
-      collapseCompletedByDefault: false
+      collapseCompletedByDefault: false,
+      calendarAgendaCollapsed: false
     }
   };
 }

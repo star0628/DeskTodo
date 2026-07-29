@@ -23,6 +23,8 @@ function completedTask(overrides: Partial<TodoItem> = {}): TodoItem {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: [],
     ...overrides
   };

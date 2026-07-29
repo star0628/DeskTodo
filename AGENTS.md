@@ -15,12 +15,22 @@
 - Keep date-view semantics explicit: past dates are actual completion history, today includes backlog and due work, and future dates show tasks whose parent `scheduledFor` exactly matches that date.
 - Standalone planned dates belong only to parent tasks. Children inherit the parent date and must keep `scheduledFor: null`.
 - Planned date and exact deadline are independent fields; changing one must not silently move the other.
+- Todo time blocks are also independent of deadlines. Store all-day ranges with an exclusive end date and timed ranges as ISO instants interpreted through local-day selectors.
 - Date navigation is ephemeral UI state and must not be persisted or trigger saves.
 - Calendar completion markers and completed-section grouping must remain selector-derived.
+- Apple Calendar is a separate, optional, one-way read-only source. Automatic sync must never write Todo state or write back to Apple. A user-confirmed copy may create an independent Todo only through `addTaskFromCalendar`; it must not create a live link.
+- Calendar state changes must go through `src/calendar/domain/calendarReducer.ts`; React components must not directly mutate sources or snapshots.
+- Calendar persistence must use the repository in `src/calendar/persistence` and the separate `desktodo-calendar-state.json` Store. Never put calendar data into Todo `AppState`.
+- Treat an Apple public-calendar URL as a credential. Store it only in Windows Credential Manager; never persist, log, commit, display after setup, or include a real link in a test fixture.
+- Calendar native fetches must remain restricted to the exact Apple published-calendar allowlist for `icloud.com`/`icloud.com.cn` plus the exact `calendars.icloud.com/holidays/<region>_<language>.ics` family; every redirect must be revalidated.
+- Calendar hydration must not save. Invalid/error calendar fallback must not be overwritten by automatic refresh, and calendar saves must stay serialized.
+- Sync failures must preserve the last successful per-source snapshot. A late generation must never overwrite a newer result, and one source failure must not block Todo or other sources.
+- Calendar date matching must use local-day boundaries and all-day exclusive end dates; never derive a local date by slicing a UTC string.
+- Keep calendar parsing bounded by input size, source count, event count, recurrence work, and display range.
 - Important-task ordering must remain selector-derived; do not reorder or mutate persisted task arrays to pin important work.
 - Search must remain local and read-only over AppState. Do not add a remote index, analytics, or persistence writes for queries.
 - Recurrence must keep at most one unfinished occurrence per series and generate only the latest due occurrence after missed days.
-- Recurrence templates may copy only the parent title, importance flag, and one-level child titles; never introduce nested subtasks.
+- Recurrence templates may copy only the supported parent fields: title, importance, one-level child titles, deadline pattern/display mode, and time-block pattern. Never copy an Apple event reference or introduce nested subtasks.
 - Automatic recurrence materialization must not save over an invalid/error fallback state.
 - Delete undo must restore through reducer actions and the normal persistence queue.
 - Historical date views stay read-only by default; deletion must use the explicit selection, confirmation, reducer, and undo flow.

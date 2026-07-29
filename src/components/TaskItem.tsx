@@ -15,7 +15,7 @@ import { formatLocalDateLabel } from "../utils/date";
 import { scheduleTodoFocus } from "../utils/focus";
 import { DeadlineMeta } from "./DeadlineMeta";
 import { RecurringDeleteDialog } from "./RecurringDeleteDialog";
-import { ScheduleControl } from "./ScheduleControl";
+import { formatTimeBlockLabel, ScheduleControl } from "./ScheduleControl";
 import {
   createSubtaskSortGroups,
   createTaskSortData,
@@ -111,18 +111,30 @@ export function TaskItem({
             </button>
             <ScheduleControl
               scheduledFor={task.scheduledFor}
+              timeBlock={task.timeBlock}
               deadlineAt={task.deadlineAt}
               deadlineDisplayMode={task.deadlineDisplayMode}
               rule={recurrenceRule ?? null}
               today={today}
               disabled={
-                task.done && !task.scheduledFor && !task.deadlineAt && !recurrenceRule
+                task.done &&
+                !task.scheduledFor &&
+                !task.timeBlock &&
+                !task.deadlineAt &&
+                !recurrenceRule
               }
-              onChange={({ scheduledFor, deadlineAt, deadlineDisplayMode, rule }) =>
+              onChange={({
+                scheduledFor,
+                timeBlock,
+                deadlineAt,
+                deadlineDisplayMode,
+                rule
+              }) =>
                 dispatch({
                   type: "setTaskSchedule",
                   id: task.id,
                   scheduledFor,
+                  timeBlock,
                   deadlineAt,
                   deadlineDisplayMode,
                   rule,
@@ -380,12 +392,18 @@ function TaskRow({
         </div>
         {level === "parent" &&
           ((task.deadlineAt && nowMs !== undefined) ||
+            task.timeBlock !== null ||
             (subtaskProgress && subtaskProgress.total > 0) ||
             overduePlannedDate !== null) && (
             <div className="task-meta-row">
               {overduePlannedDate && today && (
                 <span className="scheduled-date-meta">
                   原计划 {formatLocalDateLabel(overduePlannedDate, today)}
+                </span>
+              )}
+              {task.timeBlock && (
+                <span className="todo-time-block-meta">
+                  {formatTimeBlockLabel(task.timeBlock)}
                 </span>
               )}
               {task.deadlineAt && nowMs !== undefined && (

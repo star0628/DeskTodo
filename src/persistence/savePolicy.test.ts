@@ -19,6 +19,8 @@ function task(overrides: Partial<TodoItem> = {}): TodoItem {
     deadlineAt: null,
     deadlineDisplayMode: "countdown",
     recurrenceSeriesId: null,
+    timeBlock: null,
+    calendarEventRef: null,
     children: [],
     ...overrides
   };
@@ -150,6 +152,27 @@ describe("savePolicy", () => {
     expect(shouldSave({ loadStatus: "invalid", previousState, nextState, action })).toBe(true);
   });
 
+  it("saves a calendar event copied into Todo after invalid load", () => {
+    const previousState = fallbackDefaultState();
+    const action = {
+      type: "addTaskFromCalendar",
+      title: "Calendar task",
+      scheduledFor: "2026-07-14",
+      timeBlock: {
+        kind: "allDay",
+        startOn: "2026-07-14",
+        endExclusiveOn: "2026-07-15"
+      },
+      calendarEventRef: "source-1:event-1",
+      today: "2026-07-14"
+    } as const;
+    const nextState = todoReducer(previousState, action);
+
+    expect(
+      shouldSave({ loadStatus: "invalid", previousState, nextState, action })
+    ).toBe(true);
+  });
+
   it("allows settings mutations after a clean Todo state has been saved", () => {
     const previousState = state([task()]);
     const action = { type: "setWindowLayerMode", mode: "normal" } as const;
@@ -227,7 +250,8 @@ describe("savePolicy", () => {
             important: false,
             childTitles: [],
             deadlinePattern: null,
-            deadlineDisplayMode: "countdown" as const
+            deadlineDisplayMode: "countdown" as const,
+            timeBlockPattern: null
           },
           nextOccurrenceOn: "2026-07-13",
           activeTaskId: null,

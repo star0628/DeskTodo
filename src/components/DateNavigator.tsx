@@ -9,6 +9,7 @@ interface DateNavigatorProps {
   today: LocalDateKey;
   completionCounts?: ReadonlyMap<LocalDateKey, number>;
   scheduledCounts?: ReadonlyMap<LocalDateKey, number>;
+  calendarEventCounts?: ReadonlyMap<LocalDateKey, number>;
   onChange: (date: LocalDateKey) => void;
   onOpenSearch?: () => void;
   searchTriggerRef?: Ref<HTMLButtonElement>;
@@ -16,12 +17,14 @@ interface DateNavigatorProps {
 
 const EMPTY_COMPLETION_COUNTS = new Map<LocalDateKey, number>();
 const EMPTY_SCHEDULED_COUNTS = new Map<LocalDateKey, number>();
+const EMPTY_CALENDAR_EVENT_COUNTS = new Map<LocalDateKey, number>();
 
 export function DateNavigator({
   selectedDate,
   today,
   completionCounts = EMPTY_COMPLETION_COUNTS,
   scheduledCounts = EMPTY_SCHEDULED_COUNTS,
+  calendarEventCounts = EMPTY_CALENDAR_EVENT_COUNTS,
   onChange,
   onOpenSearch,
   searchTriggerRef
@@ -105,6 +108,7 @@ export function DateNavigator({
         today={today}
         completionCounts={completionCounts}
         scheduledCounts={scheduledCounts}
+        calendarEventCounts={calendarEventCounts}
         onSelect={onChange}
         onClose={closeCalendar}
       />
