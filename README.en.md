@@ -8,9 +8,13 @@
 [![Latest Release](https://img.shields.io/github/v/release/star0628/DeskTodo?label=Latest%20Release)](https://github.com/star0628/DeskTodo/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+> [!TIP]
+> **New to DeskTodo? Start with the [illustrated user guide](./docs/user-guide.en.md).**
+> It covers tasks, date and time planning, Apple Calendar, window modes, tray behavior, and data backup.
+
 DeskTodo is a Windows-first minimal desktop Todo widget. It is intentionally small: a frameless translucent desktop checklist with local persistence, tray behavior, and stable core task interactions.
 
-The current development version is v0.6.0; the latest public release remains v0.4.1. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
+The current source version is v0.6.0. Use [GitHub Releases](https://github.com/star0628/DeskTodo/releases/latest) as the source of truth for the latest public version, installer, and SHA256 checksum. The validated `v0.1.0-personal-release` tag remains frozen as the personal release baseline.
 
 ## Download and Install
 
@@ -126,18 +130,21 @@ Browser development uses localStorage but does not expose Apple Calendar network
 - Carry both the local clock-time deadline pattern and its display mode into future recurring occurrences.
 - Repeating work keeps at most one unfinished occurrence and creates only the latest due occurrence after time away, avoiding backlog floods.
 - Deleting a repeating occurrence can skip only that occurrence or stop the whole series.
+- Navigate from the date controls or calendar into a future date and create parent tasks directly for that day.
+- Set, change, or clear a parent task's planning date; one-level subtasks inherit the parent date.
+- Unfinished work whose planning date has arrived automatically rolls into Today while retaining its original date context.
 - Parent subtask progress display.
 - A focused Today view containing all unfinished work plus tasks completed today.
 - Automatic removal of older completed work from the Today view without deleting history.
-- Previous-day navigation and a compact dark Chinese calendar for reviewing daily completion history.
-- Calendar completion dots with accessible per-day completion counts.
+- Previous/next date navigation and a compact dark Chinese calendar for completion history and future planning.
+- Solid calendar dots for completion history and hollow dots for future plans, both with accessible per-day counts.
 - Optional read-only Apple public-calendar display for global, mainland-China, and official regional holiday `.ics` feeds.
 - An isolated calendar reducer, schema v2, repository, and serialized save queue; automatic sync never writes calendar data into Todo `AppState`, and transient failures keep the last successful snapshot.
 - All-day, cross-day, time-zone, recurrence, exclusion, moved-instance, and cancelled-instance handling, with two collapsible compact rows and an always-available full list.
 - Explicitly copy an Apple event into Day Todo after editing its title, target date, and start/end time. The Todo is independent and is never written back or overwritten by later calendar sync.
 - Fully completed work grouped in a collapsible section below active work.
 - Eight-second undo for parent-task, subtask, and confirmed historical-record deletion.
-- `Ctrl+N` focuses Quick Add on Today when no editor or calendar is active.
+- `Ctrl+N` focuses Quick Add on Today or a future planning date when no editor or calendar is active.
 - `Ctrl+Z` restores the pending deletion when focus is outside an editor.
 - A compact derived completion line under the header progress count.
 - Focus follows tasks moved between active and completed groups and returns to an item restored by undo.
@@ -167,9 +174,9 @@ Browser development uses localStorage but does not expose Apple Calendar network
 
 DeskTodo records both the exact completion timestamp and the local calendar date when a task or subtask is checked. The Today view is derived rather than destructively cleaned: unfinished work remains visible across days, work completed today stays visible until the local day changes, and older completed work remains available from the date navigator.
 
-Historical dates remain read-only during normal review. Quick Add and editing controls are available only on Today. When cleanup is required, `选择` enters a dedicated selection mode; deletion requires a second confirmation, reports any child records affected on other dates, and can be undone for eight seconds. A completed parent that still contains unfinished children is protected from historical deletion. Deadlines belong to Today tasks and do not turn historical completion views into editable schedules.
+Historical dates remain read-only during normal review. Quick Add and editing controls are available on Today and future planning dates. A future view shows parent tasks planned for that date, while undated backlog remains on Today. When cleanup is required, `选择` enters a dedicated selection mode; deletion requires a second confirmation, reports any child records affected on other dates, and can be undone for eight seconds. A completed parent that still contains unfinished children is protected from historical deletion.
 
-The calendar is keyboard accessible, uses Monday as the first day of the week, and prevents future-date selection. A dot under a date means at least one parent task or subtask was completed on that date; its accessible day label includes the exact count. Today keeps active work above a collapsible completed section. A completed parent with an unfinished child remains in the active area so open work is never hidden.
+The calendar is keyboard accessible, uses Monday as the first day of the week, and allows past, current, and future dates. A solid dot indicates completion history, while a hollow dot indicates future planned work; accessible day labels include exact counts. Today and future views keep active work above a collapsible completed section. A completed parent with an unfinished child remains in the active area so open work is never hidden.
 
 State schema v10 contains live tasks, imported completion snapshots, visual settings, custom theme seeds, importance, independent scheduled dates, independent time blocks, Apple-event copy references, recurrence series, optional deadlines, and each task's deadline display mode. Valid v1-v9 data is migrated in memory; the first subsequent save preserves the original state under the matching versioned backup key before writing schema v10. Schema v9's one-off future scheduling remains supported on parent tasks while children continue to inherit the parent date. Existing v6 deadlines migrate to countdown mode, preserving their exact timestamp and current visual behavior. Because v0.1.0 did not store a dedicated completion timestamp, already-completed v1 tasks use their last `updatedAt` value as a best-effort historical completion time. New completions are recorded exactly.
 
@@ -189,7 +196,7 @@ Search is local and read-only. It scans parent and one-level child titles in the
 
 Repeating tasks use a small recurrence-series model rather than cloning an unlimited schedule in advance. Supported rules are daily, Monday-to-Friday workdays, and selected weekdays. DeskTodo keeps at most one unfinished occurrence per series; after the app has been closed for several occurrence dates, it creates the latest due occurrence only. A future occurrence copies the latest saved parent title, importance flag, child titles, relative deadline clock time, and deadline display mode while resetting all completion state.
 
-Deadlines are stored as canonical ISO timestamps and edited as the user's Windows local date and time. The Time Arrangement dialog provides a per-task `倒计时 / 截止时间` choice. Countdown mode remains minute-granular outside the last 30 minutes and updates once per second below that threshold. Deadline-time mode shows `今天`, `明天`, a same-year month/day, or a full cross-year date; overdue work keeps an explicit `已逾期` marker instead of relying on color alone. DeskTodo recomputes from the system clock after focus and visibility changes instead of counting timer ticks, so sleep and tray time do not accumulate drift. Deadlines remain visual metadata only and do not send notifications or reminders.
+Planning date, time block, and deadline are separate fields. The Time Arrangement dialog provides `计划日期 / 时间段 / 截止时间 / 重复` tabs, and changing a planning date does not silently move an exact deadline. Deadlines are stored as canonical ISO timestamps and edited as the user's Windows local date and time. Each task can display either `倒计时` or `截止时间`; countdown mode remains minute-granular outside the last 30 minutes and updates once per second below that threshold. Deadline-time mode shows `今天`, `明天`, a same-year month/day, or a full cross-year date; overdue work keeps an explicit `已逾期` marker instead of relying on color alone. DeskTodo recomputes from the system clock after focus and visibility changes instead of counting timer ticks, so sleep and tray time do not accumulate drift. Deadlines remain visual metadata only and do not send notifications or reminders.
 
 ## Settings
 
